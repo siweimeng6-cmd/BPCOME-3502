@@ -11,12 +11,12 @@ void bsp_gpio_init(void)
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOB |
                            RCC_APB2Periph_GPIOC | RCC_APB2Periph_GPIOD, ENABLE);
 
-    /************************** PA0 - SELF_RST 自复位，低电平有效，空闲拉高 **************************/
+    /************************** PA0 - SELF_RST 自复位，高电平有效，空闲拉低 **************************/
     GPIO_InitStructure.GPIO_Pin = SELF_RST_GPIO_PIN;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
     GPIO_Init(SELF_RST_GPIO_PORT, &GPIO_InitStructure);
-    GPIO_SetBits(SELF_RST_GPIO_PORT, SELF_RST_GPIO_PIN);
+    GPIO_ResetBits(SELF_RST_GPIO_PORT, SELF_RST_GPIO_PIN);
 
     xSelfResetSemaphore = xSemaphoreCreateBinary();
 
@@ -85,7 +85,7 @@ static void report_level_change(GPIO_TypeDef *port, uint16_t pin, uint8_t *pre_s
 * @ 函数名  GPIO_Task
 * @ 功能说明  GPIO控制任务：PB13(PWROK) 跟随 PB6(P3V3SUS_PG) 状态；
 *             同时等待 UART4 收到"Reset"命令后，对 PA0(SELF_RST) 做一次
-*             低电平100ms的自复位脉冲（低电平有效）。
+*             高电平100ms的自复位脉冲（高电平有效）。
 * @ 参数    parameter: 任务参数
 * @ 返回值  无
 *********************************************************************/
@@ -103,11 +103,11 @@ void GPIO_Task(void* parameter)
         // 用信号量当作100ms轮询周期的等待：收到Reset命令会提前唤醒，否则超时后继续走下面的轮询
         if(xSemaphoreTake(xSelfResetSemaphore, pdMS_TO_TICKS(100)) == pdTRUE)
         {
-            printf("[SELF_RST] 收到Reset命令，PA0拉低\r\n");
-            GPIO_ResetBits(SELF_RST_GPIO_PORT, SELF_RST_GPIO_PIN);   // 拉低，触发自复位
+            printf("[SELF_RST] 收到Reset命令，PA0拉高\r\n");
+            GPIO_SetBits(SELF_RST_GPIO_PORT, SELF_RST_GPIO_PIN);    // 拉高，触发自复位
             vTaskDelay(pdMS_TO_TICKS(100));
-            GPIO_SetBits(SELF_RST_GPIO_PORT, SELF_RST_GPIO_PIN);    // 拉高，恢复空闲
-            printf("[SELF_RST] 100ms后PA0拉高，自复位脉冲结束\r\n");
+            GPIO_ResetBits(SELF_RST_GPIO_PORT, SELF_RST_GPIO_PIN);   // 拉低，恢复空闲
+            printf("[SELF_RST] 100ms后PA0拉低，自复位脉冲结束\r\n");
         }
 
         // PWROK 直接跟随 P3V3SUS_PG：PB6为高则PB13输出高，PB6为低则PB13输出低

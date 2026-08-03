@@ -7,8 +7,8 @@
 #include "semphr.h"
 
 /**********************************PA***********************************************/
-// PA0-WKUP - SELF_RST (自复位，低电平有效，空闲为高)。由UART4 debug口收到"Reset"命令触发，
-// 拉低100ms后拉高，见 bsp_gpio.c 的 GPIO_Task() 和 bsp_usart.c 的 UART4_IRQHandler()
+// PA0-WKUP - SELF_RST (自复位，高电平有效，空闲为低)。由UART4 debug口收到"Reset"命令触发，
+// 拉高100ms后拉低，见 bsp_gpio.c 的 GPIO_Task() 和 bsp_usart.c 的 UART4_IRQHandler()
 #define SELF_RST_GPIO_PORT                      GPIOA
 #define SELF_RST_GPIO_PIN                       GPIO_Pin_0
 
