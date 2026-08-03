@@ -138,17 +138,44 @@ PC6=25kHz PWM + PA9较高频率转速信号同时注入，让 EXTI9_5 打满负�
 
 ## 8. UART5 健康上报口（PC12/PD2）
 
-目前只发送、未使能接收中断，具体上报协议未定义。`UART5_SendHealthReport(char *str)`
-内部走 `Usart_SendString(HEALTH_USARTx, str)`。
+由 `UART5_Task`（`task_usart.c`，优先级2、栈512字）每 **2 秒** 发送一帧多行文本报文，
+经 `UART5_SendHealthReport()` → `Usart_SendString(HEALTH_USARTx, str)` 阻塞式发出。
+**只发不收**：UART5 未使能 RXNE 中断、未配 NVIC，核心卡下发的命令收不到。
+
+报文格式（标签统一用ASCII，避免跨设备编码问题）：
+
+```
+=========== HEALTH REPORT ===========
+V_12V:12.05V
+V_5V:5.02V
+V_3.3V:3.31V
+I_CURRENT:1.23A
+Addr0x90:35.5 C
+Addr0x92:36.0 C
+Addr0x94:34.8 C
+FAN_RPM:3600
+P3V3SUS_PG:1 P3V3_STBY_PG:1 PWROK:1
+CB_RESET#:1 SLP_S3#:1 SLP_S4#:1 SLP_S5#:1
+=====================================
+```
+
+数据来源：电压/电流读 `stADC_Data`、温度读 `board_temp0/1/2`（配合
+`board_temp_valid[3]` 判断有效性）、转速读 `g_fan_tach_relay`、GPIO 现场读取
+（PWROK 是输出脚，用 `GPIO_ReadOutputDataBit`）。ADC 和温度由 `Sensor_Task`
+每 2 秒刷新，`UART5_Task` 只是消费者，两个任务相位独立，上报数据最多滞后一个采集周期。
 
 **步骤**：
-1. 临时调用一次 `UART5_SendHealthReport("test\r\n")`，用逻辑分析仪/USB转串口模块在
-   PC12（TX）抓包，确认波特率115200、8N1格式正确。
-2. 如需验证接收方向（PD2/RX），可用杜邦线临时短接 PC12-PD2 自环，配合
-   `USART_ReceiveData` 验证收发通路都正常。
+1. USB转串口模块接 PC12（TX）+ GND，115200-8N1，确认每 2 秒收到一帧上述格式报文。
+2. 同时开 UART4 窗口交叉核对：UART5 的电压/温度/转速数值应与 UART4 的"系统状态"
+   打印一致（可能相差一个采集周期）。
+3. 拉高/拉低 PB6(P3V3SUS_PG)，报文里的 `P3V3SUS_PG` 和 `PWROK` 两位应在下一帧跟随变化。
+4. **温度掉线测试**：拔掉/断开某一路 LM75A 温度传感器，该路应在下一帧变成
+   `Addr0xXX:N/A`，而不是继续发掉线前的旧温度；重新接上后应恢复正常读数。
+5. 如需验证接收方向（PD2/RX），可用杜邦线临时短接 PC12-PD2 自环，配合
+   `USART_ReceiveData` 验证收发通路都正常（当前固件不解析收到的数据）。
 
-**预期结果**：UART5 外设收发正常，格式正确。此测试通过后，后续补充具体协议内容时
-无需再验证外设层。
+**预期结果**：报文按 2 秒周期稳定输出，各字段与 UART4 打印一致；传感器掉线时对应
+温度字段为 `N/A`。
 
 ---
 

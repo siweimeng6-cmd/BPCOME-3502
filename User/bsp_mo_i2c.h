@@ -75,6 +75,7 @@
 extern int board_temp0[2];           //存储整数化后的实际温度值
 extern int board_temp1[2];           //存储整数化后的实际温度值
 extern int board_temp2[2];           //存储整数化后的实际温度值
+extern int board_temp_valid[3];      //三路温度本次读取是否成功，0表示传感器读失败(board_tempN为旧值)
 
 
 

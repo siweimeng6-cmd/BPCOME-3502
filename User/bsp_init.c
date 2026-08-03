@@ -141,10 +141,23 @@ void AppTaskCreate(void)
                         (UBaseType_t    )3,	/* 任务的优先级 */
                         (TaskHandle_t*  )&GPIO_Task_Handle);/* 任务控制块指针 */
   if(pdPASS == xReturn)
-    printf("创建GPIO_Task任务成功!\r\n"); 
+    printf("创建GPIO_Task任务成功!\r\n");
   else
-    printf("创建GPIO_Task任务失败!\r\n");   
-  
+    printf("创建GPIO_Task任务失败!\r\n");
+/**************************************************************************************************/
+  // 创建UART5_Task任务，通过UART5(PC12/PD2)向核心卡做健康上报
+  // 优先级设为2，不能高于GPIO_Task(3)，避免挤占PWROK电源时序和自复位脉冲的响应
+  xReturn = xTaskCreate((TaskFunction_t )UART5_Task, /* 任务入口函数 */
+                        (const char*    )"UART5_Task",/* 任务名字 */
+                        (uint16_t       )512,   /* 任务栈大小 */
+                        (void*          )NULL,	/* 任务入口函数参数 */
+                        (UBaseType_t    )2,	/* 任务的优先级 */
+                        (TaskHandle_t*  )&UART5_Task_Handle);/* 任务控制块指针 */
+  if(pdPASS == xReturn)
+    printf("创建UART5_Task任务成功!\r\n");
+  else
+    printf("创建UART5_Task任务失败!\r\n");
+
   taskEXIT_CRITICAL();//退出临界区
   vTaskDelete(NULL); //删除当前任务
 }

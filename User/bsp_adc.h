@@ -64,6 +64,9 @@ typedef struct
   volatile float adc_voltage_val[ADC_CONVERT_CHANNEL];						
 }stADC_DATA_t, *pstADC_DATA_t;
 
+// ADC采集结果，adc_voltage_val[0..2]为P12V/P5V/P3V3电压(V)，[3]为PC4电流(A)
+extern stADC_DATA_t stADC_Data;
+
 
 /**************************函数声明********************************/
 void ADCx_Init(void);

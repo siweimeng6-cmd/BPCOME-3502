@@ -7,6 +7,7 @@ extern TaskHandle_t UART5_Task_Handle;
 
 
 void Sensor_Task(void* parameter);
+void UART5_Task(void* parameter);
 
 
 #endif 

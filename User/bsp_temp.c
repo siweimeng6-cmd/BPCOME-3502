@@ -6,6 +6,10 @@ int board_temp0[2]={0x00,0x00};           //存储整数化后的实际温度值
 int board_temp1[2]={0x00,0x00};           //存储整数化后的实际温度值
 int board_temp2[2]={0x00,0x00};           //存储整数化后的实际温度值
 
+// 三路温度本次读取是否成功，下标0/1/2对应board_temp0/1/2。
+// 读失败时board_tempN保留上一次的旧值，靠这个标志区分"当前有效"和"传感器掉线"。
+int board_temp_valid[3]={0x00,0x00,0x00};
+
 uint8_t board_lm75a_temp0[2]={0x00,0x00}; //温度采集数字化存储寄存器
 uint8_t board_lm75a_temp1[2]={0x00,0x00}; //温度采集数字化存储寄存器
 uint8_t board_lm75a_temp2[2]={0x00,0x00}; //温度采集数字化存储寄存器
@@ -25,11 +29,13 @@ void Board_ADDR90_temp(void)
 		if(board_lm75a_temp_ReadBytes((uint8_t *)board_lm75a_temp0,0,2,BOARD_LM75A90_ADDRESS)==1)
 		{
 			float_temp = temp_calculate(board_lm75a_temp0); //采集转换成实际温度
-			decimal_2_integer(float_temp,board_temp0); //整数化 	
+			decimal_2_integer(float_temp,board_temp0); //整数化
+			board_temp_valid[0] = 1;
 			sprintf((char *)flash_buf,"Addr0x90:%d.%d C\r\n" ,board_temp0[0],board_temp0[1]);
 		}
 		else
 		{
+			board_temp_valid[0] = 0;
 			sprintf((char *)flash_buf,"Addr0x90 TEMP read failed.\r\n");
 		}
 		strcat((char *)stPrintf_Buf.buf, flash_buf);
@@ -48,11 +54,13 @@ void Board_ADDR92_temp(void)
 		if(board_lm75a_temp_ReadBytes((uint8_t *)board_lm75a_temp1,0,2,BOARD_LM75A92_ADDRESS)==1)
 		{	
 			float_temp = temp_calculate(board_lm75a_temp1); //采集转换成实际温度
-			decimal_2_integer(float_temp,board_temp1); //整数化	
+			decimal_2_integer(float_temp,board_temp1); //整数化
+			board_temp_valid[1] = 1;
 			sprintf((char *)flash_buf,"Addr0x92:%d.%d C\r\n" ,board_temp1[0],board_temp1[1]);
 		}
 				else
 		{
+			board_temp_valid[1] = 0;
 			sprintf((char *)flash_buf,"Addr0x92 TEMP read failed.\r\n");
 		}
 		strcat((char *)stPrintf_Buf.buf, flash_buf);
@@ -72,11 +80,13 @@ void Board_ADDR94_temp(void)
 		if(board_lm75a_temp_ReadBytes((uint8_t *)board_lm75a_temp2,0,2,BOARD_LM75A94_ADDRESS)==1)
 		{	
 			float_temp = temp_calculate(board_lm75a_temp2); //采集转换成实际温度
-			decimal_2_integer(float_temp,board_temp2); //整数化	
+			decimal_2_integer(float_temp,board_temp2); //整数化
+			board_temp_valid[2] = 1;
 			sprintf((char *)flash_buf,"Addr0x94:%d.%d C\r\n" ,board_temp2[0],board_temp2[1]);
 		}
 				else
 		{
+			board_temp_valid[2] = 0;
 			sprintf((char *)flash_buf,"Addr0x94 TEMP read failed.\r\n");
 		}
 		strcat((char *)stPrintf_Buf.buf, flash_buf);
