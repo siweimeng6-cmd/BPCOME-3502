@@ -29,3 +29,5 @@
 ### 2026-08-03
 
 - 建立本 Git 仓库，纳入 `User`/`FreeRTOS`/`Libraries`/`Project`/`Doc` 及需求文档，作为后续改动的版本管理起点。
+- PA0(SELF_RST) 自复位信号极性由"低电平有效"改为"高电平有效"（空闲拉低，收到串口`Reset`指令后拉高100ms触发），涉及 `User/gpio/bsp_gpio.c`、`User/gpio/bsp_gpio.h`。
+- 重写 `Doc/测试方案_Sheet3改动.md`：修正 ADC 实际为4通道（非"5砍到3"）、PC4电流监测消费逻辑、温度采集实现路径（`bsp_mo_i2c.c`/`bsp_temp.c`）、工程文件名等与代码不符的描述，并新增串口指令（`Reset`）说明章节。
