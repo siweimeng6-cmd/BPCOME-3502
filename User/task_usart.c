@@ -90,9 +90,6 @@ void Sensor_Task(void* parameter)
     // 打印PB6(P3V3SUS_PG)电平状态
     printf("P3V3SUS_PG(PB6): %d\r\n", GPIO_ReadInputDataBit(P3V3SUS_PG_GPIO_PORT, P3V3SUS_PG_GPIO_PIN));
 
-    // 打印PB7(P3V3_STBY_PG)电平状态
-    printf("P3V3_STBY_PG(PB7): %d\r\n", GPIO_ReadInputDataBit(P3V3_STBY_PG_GPIO_PORT, P3V3_STBY_PG_GPIO_PIN));
-
     printf("================================================\r\n");
 
     vTaskDelay(2000);

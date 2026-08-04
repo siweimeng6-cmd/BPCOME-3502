@@ -118,7 +118,7 @@
 #define P12V_EN_GPIO_PORT                       GPIOB
 #define P12V_EN_GPIO_PIN                        GPIO_Pin_12
 
-// PB13 - PWROK 底板电源OK信号输出，参考PB7(P3V3_STBY_PG)高后输出高
+// PB13 - PWROK 底板电源OK信号输出，参考PB6(P3V3SUS_PG)高后输出高
 #define PWROK_GPIO_PORT                         GPIOB
 #define PWROK_GPIO_PIN                          GPIO_Pin_13
 

@@ -28,8 +28,7 @@
 
 ### 2026-08-04
 
-- 需求变更：PB13(PWROK) 的跟随源由 PB6(P3V3SUS_PG) 改为 **PB7(P3V3_STBY_PG)**，从原有联动组里拆出，单独跟随 PB7；PA4(GN32_BL_EN)/PA5(PANEL_EN_GD)/PC8(GN32_BL_PWM) 三路继续跟随 PB6 不变。涉及 `User/gpio/bsp_gpio.c`、`User/gpio/bsp_gpio.h`。
-- 按 Sheet3 需求实现 PC8(GN32_BL_PWM,屏背光亮度调节输出)：由"预留未使用"改为推挽输出、初始拉低，加入 PA4(GN32_BL_EN)/PA5(PANEL_EN_GD) 已有的跟随 PB6(P3V3SUS_PG) 逻辑，成为第三路。涉及 `User/gpio/bsp_gpio.c`、`User/gpio/bsp_gpio.h`。
+- 按 Sheet3 需求实现 PC8(GN32_BL_PWM,屏背光亮度调节输出)：由"预留未使用"改为推挽输出、初始拉低，加入 PWROK(PB13)/PA4(GN32_BL_EN)/PA5(PANEL_EN_GD) 已有的跟随逻辑，成为第四路——PB6(P3V3SUS_PG)高则四路同时输出高。涉及 `User/gpio/bsp_gpio.c`、`User/gpio/bsp_gpio.h`。
 - 按 Sheet3 需求实现 PA4(GN32_BL_EN,屏背光使能) / PA5(PANEL_EN_GD,屏供电使能)：由"预留未使用"改为推挽输出、初始拉低，逻辑与已有的 PWROK(PB13) 一致——跟随 PB6(P3V3SUS_PG) 电平，PB6高则三路同时输出高。涉及 `User/gpio/bsp_gpio.c`、`User/gpio/bsp_gpio.h`。
 
 ### 2026-08-03
