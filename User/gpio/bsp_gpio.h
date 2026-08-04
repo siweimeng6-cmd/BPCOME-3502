@@ -156,7 +156,7 @@
 // PC6 - FAN_PWM 做输入，核心卡风扇PWM信号输入 (EXTI6中断实时镜像到PC7，见 bsp_pwm.h)
 // PC7 - FAN1_PWM 做输出，实时转发PC6电平给风扇 (见 bsp_pwm.h)
 
-// PC8 - GN32_BL_PWM (预留，屏背光亮度调节输出) 暂不使用
+// PC8 - GN32_BL_PWM 屏背光亮度调节输出，高电平有效，参考PB6(P3V3SUS_PG)高后输出高
 #define GN32_BL_PWM_GPIO_PORT                   GPIOC
 #define GN32_BL_PWM_GPIO_PIN                    GPIO_Pin_8
 
