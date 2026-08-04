@@ -24,11 +24,11 @@
 #define SER_TX1_GPIO_PORT                       GPIOA
 #define SER_TX1_GPIO_PIN                        GPIO_Pin_3
 
-// PA4 - GN32_BL_EN (预留，屏背光使能高有效) 暂不使用
+// PA4 - GN32_BL_EN 屏背光使能，高电平有效，参考PB6(P3V3SUS_PG)高后输出高
 #define GN32_BL_EN_GPIO_PORT                    GPIOA
 #define GN32_BL_EN_GPIO_PIN                     GPIO_Pin_4
 
-// PA5 - PANEL_EN_GD (预留，屏供电使能高有效) 暂不使用
+// PA5 - PANEL_EN_GD 屏供电使能，高电平有效，参考PB6(P3V3SUS_PG)高后输出高
 #define PANEL_EN_GD_GPIO_PORT                   GPIOA
 #define PANEL_EN_GD_GPIO_PIN                    GPIO_Pin_5
 

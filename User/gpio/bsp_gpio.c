@@ -43,6 +43,20 @@ void bsp_gpio_init(void)
     GPIO_Init(PWROK_GPIO_PORT, &GPIO_InitStructure);
     GPIO_ResetBits(PWROK_GPIO_PORT, PWROK_GPIO_PIN);
 
+    // PA4 - GN32_BL_EN 屏背光使能，参考PB6高后输出高。初始状态拉低
+    GPIO_InitStructure.GPIO_Pin = GN32_BL_EN_GPIO_PIN;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_Init(GN32_BL_EN_GPIO_PORT, &GPIO_InitStructure);
+    GPIO_ResetBits(GN32_BL_EN_GPIO_PORT, GN32_BL_EN_GPIO_PIN);
+
+    // PA5 - PANEL_EN_GD 屏供电使能，参考PB6高后输出高。初始状态拉低
+    GPIO_InitStructure.GPIO_Pin = PANEL_EN_GD_GPIO_PIN;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_Init(PANEL_EN_GD_GPIO_PORT, &GPIO_InitStructure);
+    GPIO_ResetBits(PANEL_EN_GD_GPIO_PORT, PANEL_EN_GD_GPIO_PIN);
+
     /************************** 核心卡睡眠状态输入 **************************/
     // PC0 - SLP_S3# 核心卡S3睡眠信号输入，低有效（内部上拉）
     GPIO_InitStructure.GPIO_Pin = SLP_S3_GPIO_PIN;
@@ -83,9 +97,9 @@ static void report_level_change(GPIO_TypeDef *port, uint16_t pin, uint8_t *pre_s
 
 /***********************************************************************
 * @ 函数名  GPIO_Task
-* @ 功能说明  GPIO控制任务：PB13(PWROK) 跟随 PB6(P3V3SUS_PG) 状态；
-*             同时等待 UART4 收到"Reset"命令后，对 PA0(SELF_RST) 做一次
-*             高电平100ms的自复位脉冲（高电平有效）。
+* @ 功能说明  GPIO控制任务：PB13(PWROK)/PA4(GN32_BL_EN)/PA5(PANEL_EN_GD) 跟随
+*             PB6(P3V3SUS_PG) 状态；同时等待 UART4 收到"Reset"命令后，对
+*             PA0(SELF_RST) 做一次高电平100ms的自复位脉冲（高电平有效）。
 * @ 参数    parameter: 任务参数
 * @ 返回值  无
 *********************************************************************/
@@ -110,23 +124,27 @@ void GPIO_Task(void* parameter)
             printf("[SELF_RST] 100ms后PA0拉低，自复位脉冲结束\r\n");
         }
 
-        // PWROK 直接跟随 P3V3SUS_PG：PB6为高则PB13输出高，PB6为低则PB13输出低
+        // PWROK/GN32_BL_EN/PANEL_EN_GD 都直接跟随 P3V3SUS_PG(PB6)：PB6为高则三路都输出高，为低则都输出低
         {
             uint8_t p3v3sus_pg = GPIO_ReadInputDataBit(P3V3SUS_PG_GPIO_PORT, P3V3SUS_PG_GPIO_PIN);
 
             if(p3v3sus_pg == Bit_SET)
             {
                 GPIO_SetBits(PWROK_GPIO_PORT, PWROK_GPIO_PIN);
+                GPIO_SetBits(GN32_BL_EN_GPIO_PORT, GN32_BL_EN_GPIO_PIN);
+                GPIO_SetBits(PANEL_EN_GD_GPIO_PORT, PANEL_EN_GD_GPIO_PIN);
             }
             else
             {
                 GPIO_ResetBits(PWROK_GPIO_PORT, PWROK_GPIO_PIN);
+                GPIO_ResetBits(GN32_BL_EN_GPIO_PORT, GN32_BL_EN_GPIO_PIN);
+                GPIO_ResetBits(PANEL_EN_GD_GPIO_PORT, PANEL_EN_GD_GPIO_PIN);
             }
         }
 
         // 各输入信号的电平变化打印（仅用于调试观察，没有其他联动逻辑）
         report_level_change(P3V3SUS_PG_GPIO_PORT, P3V3SUS_PG_GPIO_PIN, &pre_pwrok,
-                             "[PWROK] P3V3SUS_PG变高，PB13(PWROK)拉高\r\n",
+                             "[PWROK] P3V3SUS_PG变高，PB13(PWROK)/PA4(BL_EN)/PA5(PANEL_EN)拉高\r\n",
                              "[PWROK] P3V3SUS_PG变低，PB13(PWROK)拉低\r\n");
 
         report_level_change(P3V3_STBY_PG_GPIO_PORT, P3V3_STBY_PG_GPIO_PIN, &pre_stby_pg,

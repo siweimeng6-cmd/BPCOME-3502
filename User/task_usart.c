@@ -87,6 +87,9 @@ void Sensor_Task(void* parameter)
     // 打印风扇转速
     printf("风扇转速: %d RPM\r\n", fan_rpm);
 
+    // 打印PB6(P3V3SUS_PG)电平状态
+    printf("P3V3SUS_PG(PB6): %d\r\n", GPIO_ReadInputDataBit(P3V3SUS_PG_GPIO_PORT, P3V3SUS_PG_GPIO_PIN));
+
     printf("================================================\r\n");
 
     vTaskDelay(2000);

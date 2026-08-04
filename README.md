@@ -26,6 +26,10 @@
 
 > 记录内容按时间倒序排列，最新的改动写在最上面。
 
+### 2026-08-04
+
+- 按 Sheet3 需求实现 PA4(GN32_BL_EN,屏背光使能) / PA5(PANEL_EN_GD,屏供电使能)：由"预留未使用"改为推挽输出、初始拉低，逻辑与已有的 PWROK(PB13) 一致——跟随 PB6(P3V3SUS_PG) 电平，PB6高则三路同时输出高。涉及 `User/gpio/bsp_gpio.c`、`User/gpio/bsp_gpio.h`。
+
 ### 2026-08-03
 
 - 建立本 Git 仓库，纳入 `User`/`FreeRTOS`/`Libraries`/`Project`/`Doc` 及需求文档，作为后续改动的版本管理起点。
