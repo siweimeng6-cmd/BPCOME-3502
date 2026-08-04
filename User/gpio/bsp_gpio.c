@@ -36,7 +36,7 @@ void bsp_gpio_init(void)
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
     GPIO_Init(P3V3_STBY_PG_GPIO_PORT, &GPIO_InitStructure);
 
-    // PB13 - PWROK 底板电源OK信号输出，参考PB6高后输出高。初始状态拉低（PB6尚未确认高之前不给电源OK）
+    // PB13 - PWROK 底板电源OK信号输出，参考PB7高后输出高。初始状态拉低（PB7尚未确认高之前不给电源OK）
     GPIO_InitStructure.GPIO_Pin = PWROK_GPIO_PIN;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
@@ -104,8 +104,9 @@ static void report_level_change(GPIO_TypeDef *port, uint16_t pin, uint8_t *pre_s
 
 /***********************************************************************
 * @ 函数名  GPIO_Task
-* @ 功能说明  GPIO控制任务：PB13(PWROK)/PA4(GN32_BL_EN)/PA5(PANEL_EN_GD)/PC8(GN32_BL_PWM)
-*             跟随PB6(P3V3SUS_PG) 状态；同时等待 UART4 收到"Reset"命令后，对
+* @ 功能说明  GPIO控制任务：PA4(GN32_BL_EN)/PA5(PANEL_EN_GD)/PC8(GN32_BL_PWM) 跟随
+*             PB6(P3V3SUS_PG) 状态，PB13(PWROK) 跟随 PB7(P3V3_STBY_PG) 状态；
+*             同时等待 UART4 收到"Reset"命令后，对
 *             PA0(SELF_RST) 做一次高电平100ms的自复位脉冲（高电平有效）。
 * @ 参数    parameter: 任务参数
 * @ 返回值  无
@@ -113,7 +114,7 @@ static void report_level_change(GPIO_TypeDef *port, uint16_t pin, uint8_t *pre_s
 void GPIO_Task(void* parameter)
 {
     uint8_t pre_cb_reset = 0xFF;   // 0xFF表示还没读过，首次只记录不打印
-    uint8_t pre_pwrok = 0xFF;
+    uint8_t pre_sus_pg = 0xFF;
     uint8_t pre_stby_pg = 0xFF;
     uint8_t pre_slp_s3 = 0xFF;
     uint8_t pre_slp_s4 = 0xFF;
@@ -131,34 +132,46 @@ void GPIO_Task(void* parameter)
             printf("[SELF_RST] 100ms后PA0拉低，自复位脉冲结束\r\n");
         }
 
-        // PWROK/GN32_BL_EN/PANEL_EN_GD/GN32_BL_PWM 都直接跟随 P3V3SUS_PG(PB6)：PB6为高则四路都输出高，为低则都输出低
+        // GN32_BL_EN/PANEL_EN_GD/GN32_BL_PWM 直接跟随 P3V3SUS_PG(PB6)：PB6为高则三路都输出高，为低则都输出低
         {
             uint8_t p3v3sus_pg = GPIO_ReadInputDataBit(P3V3SUS_PG_GPIO_PORT, P3V3SUS_PG_GPIO_PIN);
 
             if(p3v3sus_pg == Bit_SET)
             {
-                GPIO_SetBits(PWROK_GPIO_PORT, PWROK_GPIO_PIN);
                 GPIO_SetBits(GN32_BL_EN_GPIO_PORT, GN32_BL_EN_GPIO_PIN);
                 GPIO_SetBits(PANEL_EN_GD_GPIO_PORT, PANEL_EN_GD_GPIO_PIN);
                 GPIO_SetBits(GN32_BL_PWM_GPIO_PORT, GN32_BL_PWM_GPIO_PIN);
             }
             else
             {
-                GPIO_ResetBits(PWROK_GPIO_PORT, PWROK_GPIO_PIN);
                 GPIO_ResetBits(GN32_BL_EN_GPIO_PORT, GN32_BL_EN_GPIO_PIN);
                 GPIO_ResetBits(PANEL_EN_GD_GPIO_PORT, PANEL_EN_GD_GPIO_PIN);
                 GPIO_ResetBits(GN32_BL_PWM_GPIO_PORT, GN32_BL_PWM_GPIO_PIN);
             }
         }
 
+        // PWROK 直接跟随 P3V3_STBY_PG(PB7)：PB7为高则输出高，为低则输出低
+        {
+            uint8_t p3v3_stby_pg = GPIO_ReadInputDataBit(P3V3_STBY_PG_GPIO_PORT, P3V3_STBY_PG_GPIO_PIN);
+
+            if(p3v3_stby_pg == Bit_SET)
+            {
+                GPIO_SetBits(PWROK_GPIO_PORT, PWROK_GPIO_PIN);
+            }
+            else
+            {
+                GPIO_ResetBits(PWROK_GPIO_PORT, PWROK_GPIO_PIN);
+            }
+        }
+
         // 各输入信号的电平变化打印（仅用于调试观察，没有其他联动逻辑）
-        report_level_change(P3V3SUS_PG_GPIO_PORT, P3V3SUS_PG_GPIO_PIN, &pre_pwrok,
-                             "[PWROK] P3V3SUS_PG变高，PB13(PWROK)/PA4(BL_EN)/PA5(PANEL_EN)/PC8(BL_PWM)拉高\r\n",
-                             "[PWROK] P3V3SUS_PG变低，PB13(PWROK)/PA4(BL_EN)/PA5(PANEL_EN)/PC8(BL_PWM)拉低\r\n");
+        report_level_change(P3V3SUS_PG_GPIO_PORT, P3V3SUS_PG_GPIO_PIN, &pre_sus_pg,
+                             "[P3V3SUS_PG] 变高，PA4(BL_EN)/PA5(PANEL_EN)/PC8(BL_PWM)拉高\r\n",
+                             "[P3V3SUS_PG] 变低，PA4(BL_EN)/PA5(PANEL_EN)/PC8(BL_PWM)拉低\r\n");
 
         report_level_change(P3V3_STBY_PG_GPIO_PORT, P3V3_STBY_PG_GPIO_PIN, &pre_stby_pg,
-                             "[P3V3_STBY_PG] 变高\r\n",
-                             "[P3V3_STBY_PG] 变低\r\n");
+                             "[P3V3_STBY_PG] 变高，PB13(PWROK)拉高\r\n",
+                             "[P3V3_STBY_PG] 变低，PB13(PWROK)拉低\r\n");
 
         report_level_change(CB_RESET_GPIO_PORT, CB_RESET_GPIO_PIN, &pre_cb_reset,
                              "[CB_RESET#] 检测到核心卡复位信号变高（复位释放）\r\n",
