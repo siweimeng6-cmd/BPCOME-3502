@@ -265,3 +265,73 @@ uint8_t eeprom_test(void)
 	printf("eeprom读写测试成功\r\n");
 	return 1;
 }
+
+uint32_t g_runtime_total_minutes = 0;
+uint32_t g_runtime_countdown_minutes = RUNTIME_SAVE_INTERVAL_MIN;
+
+static uint32_t s_base_minutes = 0;        // 开机时从EEPROM读到的历史累计分钟数
+static uint32_t s_elapsed_seconds = 0;     // 本次开机已运行秒数(Sensor_Task每次+2)
+static uint32_t s_last_saved_minutes = 0;  // 本次开机上一次写EEPROM时的已运行分钟数
+
+/*
+*********************************************************************************************************
+*	函 数 名: Runtime_Init
+*	功能说明: 开机时调用一次，从EEPROM读取历史累计运行时间(分钟)，作为本次计时的起点
+*	形    参：无
+*	返 回 值: 无
+*********************************************************************************************************
+*/
+void Runtime_Init(void)
+{
+	uint32_t stored = 0;
+
+	if (ee_CheckOk() && ee_ReadBytes((uint8_t *)&stored, RUNTIME_EE_ADDR, sizeof(stored)))
+	{
+		if (stored == 0xFFFFFFFF)   /* EEPROM擦除态，视为第一次开机 */
+		{
+			stored = 0;
+		}
+	}
+	else
+	{
+		stored = 0;
+		printf("[RUNTIME] 读取EEPROM累计运行时间失败，按0开始计时\r\n");
+	}
+
+	s_base_minutes = stored;
+	g_runtime_total_minutes = stored;
+	g_runtime_countdown_minutes = RUNTIME_SAVE_INTERVAL_MIN;
+
+	printf("[RUNTIME] 单片机累计运行时间: %u小时%u分钟\r\n", g_runtime_total_minutes / 60, g_runtime_total_minutes % 60);
+}
+
+/*
+*********************************************************************************************************
+*	函 数 名: Runtime_Task_Update
+*	功能说明: 周期性调用(与调用者的轮询周期一致，当前为Sensor_Task每2秒调用一次)，
+*	         累加本次开机运行时长；每满RUNTIME_SAVE_INTERVAL_MIN分钟，把累计总时长写入EEPROM一次
+*	形    参：无
+*	返 回 值: 无
+*********************************************************************************************************
+*/
+void Runtime_Task_Update(void)
+{
+	uint32_t elapsed_minutes;
+
+	s_elapsed_seconds += 2;
+	elapsed_minutes = s_elapsed_seconds / 60;
+
+	g_runtime_total_minutes = s_base_minutes + elapsed_minutes;
+
+	if (elapsed_minutes - s_last_saved_minutes >= RUNTIME_SAVE_INTERVAL_MIN)
+	{
+		s_last_saved_minutes = elapsed_minutes;
+
+		if (ee_WriteBytes((uint8_t *)&g_runtime_total_minutes, RUNTIME_EE_ADDR, sizeof(g_runtime_total_minutes)))
+			printf("[RUNTIME] 累计运行时间 %u小时%u分钟 已写入EEPROM\r\n", g_runtime_total_minutes / 60, g_runtime_total_minutes % 60);
+		else
+			printf("[RUNTIME] 写入EEPROM失败\r\n");
+	}
+
+	g_runtime_countdown_minutes = RUNTIME_SAVE_INTERVAL_MIN - (elapsed_minutes - s_last_saved_minutes);
+}

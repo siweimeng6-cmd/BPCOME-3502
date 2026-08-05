@@ -28,6 +28,7 @@
 
 ### 2026-08-04
 
+- 新增单片机累计运行时间统计：复用已有的串行EEPROM(AT24C512)，每满30分钟把"历史累计+本次已运行"的总分钟数写入EEPROM一次（存在地址128，避开`eeprom_test()`自检占用的0~127地址），开机时读取历史值继续累加；Debug串口(UART4)和健康上报串口(UART5)都打印累计总运行时间及距下次写入的倒计时。涉及 `User/bsp_eeprom.c`、`User/bsp_mo_i2c.h`、`User/bsp_init.c`、`User/task_usart.c`。
 - 按 Sheet3 需求实现 PC8(GN32_BL_PWM,屏背光亮度调节输出)：由"预留未使用"改为推挽输出、初始拉低，加入 PWROK(PB13)/PA4(GN32_BL_EN)/PA5(PANEL_EN_GD) 已有的跟随逻辑，成为第四路——PB6(P3V3SUS_PG)高则四路同时输出高。涉及 `User/gpio/bsp_gpio.c`、`User/gpio/bsp_gpio.h`。
 - 按 Sheet3 需求实现 PA4(GN32_BL_EN,屏背光使能) / PA5(PANEL_EN_GD,屏供电使能)：由"预留未使用"改为推挽输出、初始拉低，逻辑与已有的 PWROK(PB13) 一致——跟随 PB6(P3V3SUS_PG) 电平，PB6高则三路同时输出高。涉及 `User/gpio/bsp_gpio.c`、`User/gpio/bsp_gpio.h`。
 

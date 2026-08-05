@@ -65,6 +65,16 @@
 #define EE_SIZE				 (64*1024)     	  /* 总容量(字节) */
 #define EE_ADDR_BYTES		2			          /* 地址字节个数 */
 
+/*********************运行时长统计（与EEPROM共用，见bsp_eeprom.c）**********************/
+#define RUNTIME_EE_ADDR            128     /* 避开eeprom_test()自检占用的0~127地址(第2页页首) */
+#define RUNTIME_SAVE_INTERVAL_MIN  30      /* 每满30分钟写一次EEPROM */
+
+extern uint32_t g_runtime_total_minutes;      // 单片机累计运行时间(分钟) = EEPROM历史值 + 本次开机已运行
+extern uint32_t g_runtime_countdown_minutes;  // 距下一次EEPROM保存还剩多少分钟
+
+void Runtime_Init(void);        // 开机时调用一次：从EEPROM读历史累计值
+void Runtime_Task_Update(void); // 周期调用(Sensor_Task每2秒调一次)：计时、判断是否写EEPROM
+
 #define BPD20550_ADDRESS									0x80
 #define BPD20550_OPERATION								0x01
 #define BPD20550_READ_CURRENT							0x8C

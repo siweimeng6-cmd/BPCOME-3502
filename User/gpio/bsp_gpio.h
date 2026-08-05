@@ -131,7 +131,7 @@
 #define SW_PANEL_GPIO_PIN                       GPIO_Pin_15
 
 /******************************************PC*****************************************/
-// PC0 - SLP_S3# 核心卡S3睡眠信号输入，低有效（内部上拉）
+// PC0 - SLP_S3# 核心卡开机自检信号，高电平=开机，低电平=关机（内部上拉）
 #define SLP_S3_GPIO_PORT                        GPIOC
 #define SLP_S3_GPIO_PIN                         GPIO_Pin_0
 

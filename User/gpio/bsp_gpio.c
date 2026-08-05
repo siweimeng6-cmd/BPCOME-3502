@@ -65,7 +65,7 @@ void bsp_gpio_init(void)
     GPIO_ResetBits(GN32_BL_PWM_GPIO_PORT, GN32_BL_PWM_GPIO_PIN);
 
     /************************** 核心卡睡眠状态输入 **************************/
-    // PC0 - SLP_S3# 核心卡S3睡眠信号输入，低有效（内部上拉）
+    // PC0 - SLP_S3# 核心卡开机自检信号，高电平=开机，低电平=关机（内部上拉）
     GPIO_InitStructure.GPIO_Pin = SLP_S3_GPIO_PIN;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
     GPIO_Init(SLP_S3_GPIO_PORT, &GPIO_InitStructure);
@@ -165,8 +165,8 @@ void GPIO_Task(void* parameter)
                              "[CB_RESET#] 检测到核心卡复位信号变低（复位中）\r\n");
 
         report_level_change(SLP_S3_GPIO_PORT, SLP_S3_GPIO_PIN, &pre_slp_s3,
-                             "[SLP_S3#] 变高（退出S3睡眠）\r\n",
-                             "[SLP_S3#] 变低（进入S3睡眠）\r\n");
+                             "[SLP_S3#] 变高（开机）\r\n",
+                             "[SLP_S3#] 变低（关机）\r\n");
 
         report_level_change(SLP_S4_GPIO_PORT, SLP_S4_GPIO_PIN, &pre_slp_s4,
                              "[SLP_S4#] 变高（退出S4休眠）\r\n",

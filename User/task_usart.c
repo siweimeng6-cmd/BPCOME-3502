@@ -90,6 +90,13 @@ void Sensor_Task(void* parameter)
     // 打印PB6(P3V3SUS_PG)电平状态
     printf("P3V3SUS_PG(PB6): %d\r\n", GPIO_ReadInputDataBit(P3V3SUS_PG_GPIO_PORT, P3V3SUS_PG_GPIO_PIN));
 
+    // 运行时长计时+判断是否写EEPROM（每2秒调用一次，与本任务周期一致）
+    Runtime_Task_Update();
+
+    // 打印累计运行时间及距下次EEPROM保存的倒计时
+    printf("累计运行时间: %u小时%u分钟（距下次写入EEPROM还剩 %u 分钟）\r\n",
+            g_runtime_total_minutes / 60, g_runtime_total_minutes % 60, g_runtime_countdown_minutes);
+
     printf("================================================\r\n");
 
     vTaskDelay(2000);
@@ -145,11 +152,16 @@ void UART5_Task(void* parameter)
         strcat(health_buf, flash_buf);
 
         // 5. 核心卡复位/睡眠状态输入
-        sprintf(flash_buf, "CB_RESET#:%d SLP_S3#:%d SLP_S4#:%d SLP_S5#:%d\r\n",
+        sprintf(flash_buf, "CB_RESET#:%d SLP_S3:%d SLP_S4#:%d SLP_S5#:%d\r\n",
                  GPIO_ReadInputDataBit(CB_RESET_GPIO_PORT, CB_RESET_GPIO_PIN),
                  GPIO_ReadInputDataBit(SLP_S3_GPIO_PORT, SLP_S3_GPIO_PIN),
                  GPIO_ReadInputDataBit(SLP_S4_GPIO_PORT, SLP_S4_GPIO_PIN),
                  GPIO_ReadInputDataBit(SLP_S5_GPIO_PORT, SLP_S5_GPIO_PIN));
+        strcat(health_buf, flash_buf);
+
+        // 6. 累计运行时间及距下次EEPROM保存的倒计时
+        sprintf(flash_buf, "RUNTIME:%uh%um NEXT_SAVE_IN:%u\r\n",
+                 g_runtime_total_minutes / 60, g_runtime_total_minutes % 60, g_runtime_countdown_minutes);
         strcat(health_buf, flash_buf);
 
         sprintf(flash_buf, "=====================================\r\n");

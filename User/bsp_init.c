@@ -66,8 +66,8 @@ void BSP_Init(void)
     printf("\r\n");
     eeprom_test();
 
+    Runtime_Init();
 
-    
     delay_1ms(100);
 }
 
