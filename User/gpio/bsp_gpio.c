@@ -25,6 +25,19 @@ void bsp_gpio_init(void)
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
     GPIO_Init(CB_RESET_GPIO_PORT, &GPIO_InitStructure);
 
+    /************************** 开关机按键转发 **************************/
+    // PB4 - GD_PWRBTIN# 开关机信号输入，低有效（内部上拉），由GPIO_Task轮询消抖
+    GPIO_InitStructure.GPIO_Pin = GD_PWRBTIN_GPIO_PIN;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
+    GPIO_Init(GD_PWRBTIN_GPIO_PORT, &GPIO_InitStructure);
+
+    // PB5 - PWRBTN_OUT# 做输出给核心卡，低电平有效。初始状态拉高（空闲）
+    GPIO_InitStructure.GPIO_Pin = PWRBTN_OUT_GPIO_PIN;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_Init(PWRBTN_OUT_GPIO_PORT, &GPIO_InitStructure);
+    GPIO_SetBits(PWRBTN_OUT_GPIO_PORT, PWRBTN_OUT_GPIO_PIN);
+
     /************************** 电源时序相关引脚 **************************/
     // PB6 - P3V3SUS_PG 做输入，P3V3SUS电源PG信号（内部上拉）
     GPIO_InitStructure.GPIO_Pin = P3V3SUS_PG_GPIO_PIN;
@@ -104,9 +117,13 @@ static void report_level_change(GPIO_TypeDef *port, uint16_t pin, uint8_t *pre_s
 
 /***********************************************************************
 * @ 函数名  GPIO_Task
-* @ 功能说明  GPIO控制任务：PB13(PWROK)/PA4(GN32_BL_EN)/PA5(PANEL_EN_GD)/PC8(GN32_BL_PWM)
-*             跟随PB6(P3V3SUS_PG) 状态；同时等待 UART4 收到"Reset"命令后，对
-*             PA0(SELF_RST) 做一次高电平100ms的自复位脉冲（高电平有效）。
+* @ 功能说明  GPIO控制任务，轮询周期GPIO_TASK_POLL_MS：
+*             1) PB13(PWROK)/PA4(GN32_BL_EN)/PA5(PANEL_EN_GD)/PC8(GN32_BL_PWM)
+*                跟随PB6(P3V3SUS_PG) 状态；
+*             2) 轮询消抖PB4(GD_PWRBTIN#)，连续采到低电平满20ms就给核心卡转发
+*                一个20ms低脉冲(PB5/PWRBTN_OUT#)；
+*             3) 等待 UART4 收到"Reset"命令后，对PA0(SELF_RST) 做一次高电平100ms
+*                的自复位脉冲（高电平有效）。
 * @ 参数    parameter: 任务参数
 * @ 返回值  无
 *********************************************************************/
@@ -118,17 +135,46 @@ void GPIO_Task(void* parameter)
     uint8_t pre_slp_s3 = 0xFF;
     uint8_t pre_slp_s4 = 0xFF;
     uint8_t pre_slp_s5 = 0xFF;
+    uint8_t pwrbtn_low_cnt = 0;    // PB4连续采到低电平的次数
+    uint8_t pwrbtn_fired = 0;      // 本次按下是否已经转发过脉冲，松开后清零重新武装
 
     while(1)
     {
-        // 用信号量当作100ms轮询周期的等待：收到Reset命令会提前唤醒，否则超时后继续走下面的轮询
-        if(xSemaphoreTake(xSelfResetSemaphore, pdMS_TO_TICKS(100)) == pdTRUE)
+        // 用信号量当作轮询周期的等待：收到Reset命令会提前唤醒，否则超时后继续走下面的轮询
+        if(xSemaphoreTake(xSelfResetSemaphore, pdMS_TO_TICKS(GPIO_TASK_POLL_MS)) == pdTRUE)
         {
             printf("[SELF_RST] 收到Reset命令，PA0拉高\r\n");
             GPIO_SetBits(SELF_RST_GPIO_PORT, SELF_RST_GPIO_PIN);    // 拉高，触发自复位
             vTaskDelay(pdMS_TO_TICKS(100));
             GPIO_ResetBits(SELF_RST_GPIO_PORT, SELF_RST_GPIO_PIN);   // 拉低，恢复空闲
             printf("[SELF_RST] 100ms后PA0拉低，自复位脉冲结束\r\n");
+        }
+
+        // PB4(GD_PWRBTIN#)软件消抖：连续PWRBTN_DEBOUNCE_CNT次采到低电平（≈20ms）就判定为
+        // 一次有效按下，给PB5(PWRBTN_OUT#)转发一个20ms低脉冲。中途只要采到高电平就重新计数，
+        // 触点弹跳产生的窄毛刺凑不满次数，自然被过滤掉。
+        if(GPIO_ReadInputDataBit(GD_PWRBTIN_GPIO_PORT, GD_PWRBTIN_GPIO_PIN) == Bit_RESET)
+        {
+            if(pwrbtn_low_cnt < PWRBTN_DEBOUNCE_CNT)
+            {
+                pwrbtn_low_cnt++;
+            }
+
+            // 按住不放只转发一次，等松开后才重新武装
+            if(pwrbtn_low_cnt >= PWRBTN_DEBOUNCE_CNT && pwrbtn_fired == 0)
+            {
+                pwrbtn_fired = 1;
+                printf("[PWRBTN] PB4低电平满20ms，PB5输出20ms低脉冲转发给核心卡\r\n");
+                GPIO_ResetBits(PWRBTN_OUT_GPIO_PORT, PWRBTN_OUT_GPIO_PIN);
+                vTaskDelay(pdMS_TO_TICKS(20));
+                GPIO_SetBits(PWRBTN_OUT_GPIO_PORT, PWRBTN_OUT_GPIO_PIN);
+                printf("[PWRBTN] 20ms后PB5拉高，转发脉冲结束\r\n");
+            }
+        }
+        else
+        {
+            pwrbtn_low_cnt = 0;
+            pwrbtn_fired = 0;
         }
 
         // PWROK/GN32_BL_EN/PANEL_EN_GD/GN32_BL_PWM 都直接跟随 P3V3SUS_PG(PB6)：PB6为高则四路都输出高，为低则都输出低

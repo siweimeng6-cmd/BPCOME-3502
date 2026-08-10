@@ -59,7 +59,7 @@ void BSP_Init(void)
     
     pwm_init();
     tach_init();
-    
+
     Init_MO_I2C();
     printf("\r\n");
     printf("初始化完成\r\n");

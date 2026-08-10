@@ -87,13 +87,20 @@
 #define PWREN_GPIO_PORT                         GPIOB
 #define PWREN_GPIO_PIN                          GPIO_Pin_3
 
-// PB4 - GD_PWRBTIN# (预留，开关机信号输入，低有效) 暂不使用
+// PB4 - GD_PWRBTIN# 开关机信号输入，低有效（内部上拉）。由 GPIO_Task 轮询消抖，
+// 连续采到低电平满20ms即判定为一次有效按下，转发给PB5(PWRBTN_OUT#)
 #define GD_PWRBTIN_GPIO_PORT                    GPIOB
 #define GD_PWRBTIN_GPIO_PIN                     GPIO_Pin_4
 
-// PB5 - PWRBTN_OUT# (预留，给核心卡，延时开关机使用) 暂不使用
+// PB5 - PWRBTN_OUT# 做输出给核心卡，低电平有效，空闲拉高。PB4消抖确认后，输出20ms低脉冲
 #define PWRBTN_OUT_GPIO_PORT                    GPIOB
 #define PWRBTN_OUT_GPIO_PIN                     GPIO_Pin_5
+
+// GPIO_Task 轮询周期(ms)。PB4消抖依赖这个周期采样，改动时要同步核对 PWRBTN_DEBOUNCE_CNT
+#define GPIO_TASK_POLL_MS                       10
+
+// PB4连续采到低电平多少次才算一次有效按下：2 × 10ms ≈ 20ms
+#define PWRBTN_DEBOUNCE_CNT                     2
 
 // PB6 - P3V3SUS_PG 做输入，P3V3SUS电源PG信号（内部上拉）
 #define P3V3SUS_PG_GPIO_PORT                    GPIOB

@@ -90,6 +90,9 @@ void Sensor_Task(void* parameter)
     // 打印PB6(P3V3SUS_PG)电平状态
     printf("P3V3SUS_PG(PB6): %d\r\n", GPIO_ReadInputDataBit(P3V3SUS_PG_GPIO_PORT, P3V3SUS_PG_GPIO_PIN));
 
+    // 打印PB4(GD_PWRBTIN#)电平状态
+    printf("GD_PWRBTIN#(PB4): %d\r\n", GPIO_ReadInputDataBit(GD_PWRBTIN_GPIO_PORT, GD_PWRBTIN_GPIO_PIN));
+
     // 运行时长计时+判断是否写EEPROM（每2秒调用一次，与本任务周期一致）
     Runtime_Task_Update();
 
@@ -157,6 +160,11 @@ void UART5_Task(void* parameter)
                  GPIO_ReadInputDataBit(SLP_S3_GPIO_PORT, SLP_S3_GPIO_PIN),
                  GPIO_ReadInputDataBit(SLP_S4_GPIO_PORT, SLP_S4_GPIO_PIN),
                  GPIO_ReadInputDataBit(SLP_S5_GPIO_PORT, SLP_S5_GPIO_PIN));
+        strcat(health_buf, flash_buf);
+
+        // 5.1 开关机按键输入(GD_PWRBTIN#)现场电平
+        sprintf(flash_buf, "GD_PWRBTIN#:%d\r\n",
+                 GPIO_ReadInputDataBit(GD_PWRBTIN_GPIO_PORT, GD_PWRBTIN_GPIO_PIN));
         strcat(health_buf, flash_buf);
 
         // 6. 累计运行时间及距下次EEPROM保存的倒计时
