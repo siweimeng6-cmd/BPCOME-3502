@@ -28,6 +28,7 @@
 
 ### 2026-08-07
 
+- 需求变更：PB5(PWRBTN_OUT#) 转发脉冲宽度由 20ms 调整为 **200ms**（PB4 的 20ms 低电平检测门槛不变）。脉冲宽度提取为宏 `PWRBTN_PULSE_MS`，与 `GPIO_TASK_POLL_MS`/`PWRBTN_DEBOUNCE_CNT` 放在一起便于调整。涉及 `User/gpio/bsp_gpio.c`、`User/gpio/bsp_gpio.h`。
 - 按 Sheet3 需求实现 PB4(GD_PWRBTIN#,开关机按键输入) / PB5(PWRBTN_OUT#,转发给核心卡)：由"预留未使用"改为软件轮询消抖转发——`GPIO_Task` 轮询周期由100ms改为10ms，PB4连续2次采到低电平（≈20ms）即判定为一次有效按下，PB5(空闲拉高)立即输出一个20ms低脉冲，按住不放只发一次、松开后重新武装。最初用EXTI4双边沿中断+松手时算时长的方案，因触点弹跳会把"最后一段低电平"截短、导致脉冲时有时无，且必须松手才触发，已改为当前方案。涉及 `User/gpio/bsp_gpio.c`、`User/gpio/bsp_gpio.h`。
 
 ### 2026-08-04

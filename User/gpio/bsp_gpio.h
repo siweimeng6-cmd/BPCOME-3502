@@ -92,7 +92,7 @@
 #define GD_PWRBTIN_GPIO_PORT                    GPIOB
 #define GD_PWRBTIN_GPIO_PIN                     GPIO_Pin_4
 
-// PB5 - PWRBTN_OUT# 做输出给核心卡，低电平有效，空闲拉高。PB4消抖确认后，输出20ms低脉冲
+// PB5 - PWRBTN_OUT# 做输出给核心卡，低电平有效，空闲拉高。PB4消抖确认后，输出200ms低脉冲
 #define PWRBTN_OUT_GPIO_PORT                    GPIOB
 #define PWRBTN_OUT_GPIO_PIN                     GPIO_Pin_5
 
@@ -101,6 +101,9 @@
 
 // PB4连续采到低电平多少次才算一次有效按下：2 × 10ms ≈ 20ms
 #define PWRBTN_DEBOUNCE_CNT                     2
+
+// PB4消抖确认后，PB5(PWRBTN_OUT#)输出的低脉冲宽度(ms)
+#define PWRBTN_PULSE_MS                         200
 
 // PB6 - P3V3SUS_PG 做输入，P3V3SUS电源PG信号（内部上拉）
 #define P3V3SUS_PG_GPIO_PORT                    GPIOB

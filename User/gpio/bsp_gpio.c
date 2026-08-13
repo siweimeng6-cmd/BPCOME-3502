@@ -121,7 +121,7 @@ static void report_level_change(GPIO_TypeDef *port, uint16_t pin, uint8_t *pre_s
 *             1) PB13(PWROK)/PA4(GN32_BL_EN)/PA5(PANEL_EN_GD)/PC8(GN32_BL_PWM)
 *                跟随PB6(P3V3SUS_PG) 状态；
 *             2) 轮询消抖PB4(GD_PWRBTIN#)，连续采到低电平满20ms就给核心卡转发
-*                一个20ms低脉冲(PB5/PWRBTN_OUT#)；
+*                一个200ms低脉冲(PB5/PWRBTN_OUT#)；
 *             3) 等待 UART4 收到"Reset"命令后，对PA0(SELF_RST) 做一次高电平100ms
 *                的自复位脉冲（高电平有效）。
 * @ 参数    parameter: 任务参数
@@ -151,7 +151,7 @@ void GPIO_Task(void* parameter)
         }
 
         // PB4(GD_PWRBTIN#)软件消抖：连续PWRBTN_DEBOUNCE_CNT次采到低电平（≈20ms）就判定为
-        // 一次有效按下，给PB5(PWRBTN_OUT#)转发一个20ms低脉冲。中途只要采到高电平就重新计数，
+        // 一次有效按下，给PB5(PWRBTN_OUT#)转发一个200ms低脉冲。中途只要采到高电平就重新计数，
         // 触点弹跳产生的窄毛刺凑不满次数，自然被过滤掉。
         if(GPIO_ReadInputDataBit(GD_PWRBTIN_GPIO_PORT, GD_PWRBTIN_GPIO_PIN) == Bit_RESET)
         {
@@ -164,11 +164,11 @@ void GPIO_Task(void* parameter)
             if(pwrbtn_low_cnt >= PWRBTN_DEBOUNCE_CNT && pwrbtn_fired == 0)
             {
                 pwrbtn_fired = 1;
-                printf("[PWRBTN] PB4低电平满20ms，PB5输出20ms低脉冲转发给核心卡\r\n");
+                printf("[PWRBTN] PB4低电平满20ms，PB5输出200ms低脉冲转发给核心卡\r\n");
                 GPIO_ResetBits(PWRBTN_OUT_GPIO_PORT, PWRBTN_OUT_GPIO_PIN);
-                vTaskDelay(pdMS_TO_TICKS(20));
+                vTaskDelay(pdMS_TO_TICKS(PWRBTN_PULSE_MS));
                 GPIO_SetBits(PWRBTN_OUT_GPIO_PORT, PWRBTN_OUT_GPIO_PIN);
-                printf("[PWRBTN] 20ms后PB5拉高，转发脉冲结束\r\n");
+                printf("[PWRBTN] 200ms后PB5拉高，转发脉冲结束\r\n");
             }
         }
         else
