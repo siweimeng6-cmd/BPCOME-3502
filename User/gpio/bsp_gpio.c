@@ -7,9 +7,15 @@ void bsp_gpio_init(void)
 {
     GPIO_InitTypeDef GPIO_InitStructure;
 
-    // 启用GPIO时钟
+    // 启用GPIO时钟 + AFIO时钟（重映射寄存器需要）
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOB |
-                           RCC_APB2Periph_GPIOC | RCC_APB2Periph_GPIOD, ENABLE);
+                           RCC_APB2Periph_GPIOC | RCC_APB2Periph_GPIOD |
+                           RCC_APB2Periph_AFIO, ENABLE);
+
+    // 关闭JTAG-DP，只保留SWD：STM32F10x复位后默认PA15(JTDI)/PB3(JTDO)/PB4(NJTRST)
+    // 被JTAG调试口占用，不重映射的话这三个脚配置成普通GPIO也不会真正生效。
+    // PA13(SWDIO)/PA14(SWCLK)不受影响，SWD烧录调试照常可用。
+    GPIO_PinRemapConfig(GPIO_Remap_SWJ_JTAGDisable, ENABLE);
 
     /************************** PA0 - SELF_RST 自复位，高电平有效，空闲拉低 **************************/
     GPIO_InitStructure.GPIO_Pin = SELF_RST_GPIO_PIN;
@@ -26,9 +32,9 @@ void bsp_gpio_init(void)
     GPIO_Init(CB_RESET_GPIO_PORT, &GPIO_InitStructure);
 
     /************************** 开关机按键转发 **************************/
-    // PB4 - GD_PWRBTIN# 开关机信号输入，低有效（内部上拉），由GPIO_Task轮询消抖
+    // PB4 - GD_PWRBTIN# 开关机信号输入，低有效（浮空输入），由GPIO_Task轮询消抖
     GPIO_InitStructure.GPIO_Pin = GD_PWRBTIN_GPIO_PIN;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
     GPIO_Init(GD_PWRBTIN_GPIO_PORT, &GPIO_InitStructure);
 
     // PB5 - PWRBTN_OUT# 做输出给核心卡，低电平有效。初始状态拉高（空闲）
@@ -39,22 +45,29 @@ void bsp_gpio_init(void)
     GPIO_SetBits(PWRBTN_OUT_GPIO_PORT, PWRBTN_OUT_GPIO_PIN);
 
     /************************** 电源时序相关引脚 **************************/
-    // PB6 - P3V3SUS_PG 做输入，P3V3SUS电源PG信号（内部上拉）
+    // PB6 - P3V3SUS_PG 做输入，P3V3SUS电源PG信号（浮空输入）
     GPIO_InitStructure.GPIO_Pin = P3V3SUS_PG_GPIO_PIN;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
     GPIO_Init(P3V3SUS_PG_GPIO_PORT, &GPIO_InitStructure);
 
-    // PB7 - P3V3_STBY_PG 做输入，P3V3_STBY电源PG信号（内部上拉）
+    // PB7 - P3V3_STBY_PG 做输入，P3V3_STBY电源PG信号（浮空输入）
     GPIO_InitStructure.GPIO_Pin = P3V3_STBY_PG_GPIO_PIN;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
     GPIO_Init(P3V3_STBY_PG_GPIO_PORT, &GPIO_InitStructure);
 
-    // PB13 - PWROK 底板电源OK信号输出，参考PB6高后输出高。初始状态拉低（PB6尚未确认高之前不给电源OK）
+    // PB13 - PWROK 底板电源OK信号输出，参考PC0高后输出高。初始状态拉低
     GPIO_InitStructure.GPIO_Pin = PWROK_GPIO_PIN;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
     GPIO_Init(PWROK_GPIO_PORT, &GPIO_InitStructure);
     GPIO_ResetBits(PWROK_GPIO_PORT, PWROK_GPIO_PIN);
+
+    // PB3 - PWREN S0域电源使能，参考PC0高后输出高。初始状态拉低
+    GPIO_InitStructure.GPIO_Pin = PWREN_GPIO_PIN;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_Init(PWREN_GPIO_PORT, &GPIO_InitStructure);
+    GPIO_ResetBits(PWREN_GPIO_PORT, PWREN_GPIO_PIN);
 
     // PA4 - GN32_BL_EN 屏背光使能，参考PB6高后输出高。初始状态拉低
     GPIO_InitStructure.GPIO_Pin = GN32_BL_EN_GPIO_PIN;
@@ -77,20 +90,27 @@ void bsp_gpio_init(void)
     GPIO_Init(GN32_BL_PWM_GPIO_PORT, &GPIO_InitStructure);
     GPIO_ResetBits(GN32_BL_PWM_GPIO_PORT, GN32_BL_PWM_GPIO_PIN);
 
+    // PA15 - PWRSUS_EN SUS电源使能，参考PC0高后输出高。初始状态拉低
+    GPIO_InitStructure.GPIO_Pin = PWRSUS_EN_GPIO_PIN;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_Init(PWRSUS_EN_GPIO_PORT, &GPIO_InitStructure);
+    GPIO_ResetBits(PWRSUS_EN_GPIO_PORT, PWRSUS_EN_GPIO_PIN);
+
     /************************** 核心卡睡眠状态输入 **************************/
-    // PC0 - SLP_S3# 核心卡开机自检信号，高电平=开机，低电平=关机（内部上拉）
+    // PC0 - SLP_S3# 核心卡开机自检信号，高电平=开机，低电平=关机（浮空输入）
     GPIO_InitStructure.GPIO_Pin = SLP_S3_GPIO_PIN;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
     GPIO_Init(SLP_S3_GPIO_PORT, &GPIO_InitStructure);
 
-    // PC1 - SLP_S4# 核心卡S4休眠信号输入，低有效（内部上拉）
+    // PC1 - SLP_S4# 核心卡S4休眠信号输入，低有效（浮空输入）
     GPIO_InitStructure.GPIO_Pin = SLP_S4_GPIO_PIN;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
     GPIO_Init(SLP_S4_GPIO_PORT, &GPIO_InitStructure);
 
-    // PC2 - SLP_S5# 核心卡S5关机信号输入，低有效（内部上拉）
+    // PC2 - SLP_S5# 核心卡S5关机信号输入，低有效（浮空输入）
     GPIO_InitStructure.GPIO_Pin = SLP_S5_GPIO_PIN;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
     GPIO_Init(SLP_S5_GPIO_PORT, &GPIO_InitStructure);
 }
 
@@ -118,8 +138,9 @@ static void report_level_change(GPIO_TypeDef *port, uint16_t pin, uint8_t *pre_s
 /***********************************************************************
 * @ 函数名  GPIO_Task
 * @ 功能说明  GPIO控制任务，轮询周期GPIO_TASK_POLL_MS：
-*             1) PB13(PWROK)/PA4(GN32_BL_EN)/PA5(PANEL_EN_GD)/PC8(GN32_BL_PWM)
-*                跟随PB6(P3V3SUS_PG) 状态；
+*             1) PA4(GN32_BL_EN)/PA5(PANEL_EN_GD)/PC8(GN32_BL_PWM) 跟随
+*                PB6(P3V3SUS_PG) 状态，PA15(PWRSUS_EN)/PB13(PWROK)/PB3(PWREN)
+*                跟随 PC0(SLP_S3#) 状态；
 *             2) 轮询消抖PB4(GD_PWRBTIN#)，连续采到低电平满20ms就给核心卡转发
 *                一个200ms低脉冲(PB5/PWRBTN_OUT#)；
 *             3) 等待 UART4 收到"Reset"命令后，对PA0(SELF_RST) 做一次高电平100ms
@@ -130,13 +151,14 @@ static void report_level_change(GPIO_TypeDef *port, uint16_t pin, uint8_t *pre_s
 void GPIO_Task(void* parameter)
 {
     uint8_t pre_cb_reset = 0xFF;   // 0xFF表示还没读过，首次只记录不打印
-    uint8_t pre_pwrok = 0xFF;
+    uint8_t pre_sus_pg = 0xFF;
     uint8_t pre_stby_pg = 0xFF;
     uint8_t pre_slp_s3 = 0xFF;
     uint8_t pre_slp_s4 = 0xFF;
     uint8_t pre_slp_s5 = 0xFF;
     uint8_t pwrbtn_low_cnt = 0;    // PB4连续采到低电平的次数
     uint8_t pwrbtn_fired = 0;      // 本次按下是否已经转发过脉冲，松开后清零重新武装
+    uint8_t pre_pc0_follow = 0xFF; // 调试用：PC0跟随块自己的边沿判断，独立于pre_slp_s3
 
     while(1)
     {
@@ -177,30 +199,59 @@ void GPIO_Task(void* parameter)
             pwrbtn_fired = 0;
         }
 
-        // PWROK/GN32_BL_EN/PANEL_EN_GD/GN32_BL_PWM 都直接跟随 P3V3SUS_PG(PB6)：PB6为高则四路都输出高，为低则都输出低
+        // GN32_BL_EN/PANEL_EN_GD/GN32_BL_PWM 直接跟随 P3V3SUS_PG(PB6)：PB6为高则三路都输出高，为低则都输出低
         {
             uint8_t p3v3sus_pg = GPIO_ReadInputDataBit(P3V3SUS_PG_GPIO_PORT, P3V3SUS_PG_GPIO_PIN);
 
             if(p3v3sus_pg == Bit_SET)
             {
-                GPIO_SetBits(PWROK_GPIO_PORT, PWROK_GPIO_PIN);
                 GPIO_SetBits(GN32_BL_EN_GPIO_PORT, GN32_BL_EN_GPIO_PIN);
                 GPIO_SetBits(PANEL_EN_GD_GPIO_PORT, PANEL_EN_GD_GPIO_PIN);
                 GPIO_SetBits(GN32_BL_PWM_GPIO_PORT, GN32_BL_PWM_GPIO_PIN);
             }
             else
             {
-                GPIO_ResetBits(PWROK_GPIO_PORT, PWROK_GPIO_PIN);
                 GPIO_ResetBits(GN32_BL_EN_GPIO_PORT, GN32_BL_EN_GPIO_PIN);
                 GPIO_ResetBits(PANEL_EN_GD_GPIO_PORT, PANEL_EN_GD_GPIO_PIN);
                 GPIO_ResetBits(GN32_BL_PWM_GPIO_PORT, GN32_BL_PWM_GPIO_PIN);
             }
         }
 
+        // PA15(PWRSUS_EN)/PB13(PWROK)/PB3(PWREN) 直接跟随 PC0(SLP_S3#，开机自检信号)：
+        // PC0为高(开机)则三路都输出高，为低(关机)则都输出低
+        {
+            uint8_t slp_s3 = GPIO_ReadInputDataBit(SLP_S3_GPIO_PORT, SLP_S3_GPIO_PIN);
+
+            if(slp_s3 == Bit_SET)
+            {
+                GPIO_SetBits(PWRSUS_EN_GPIO_PORT, PWRSUS_EN_GPIO_PIN);
+                GPIO_SetBits(PWROK_GPIO_PORT, PWROK_GPIO_PIN);
+                GPIO_SetBits(PWREN_GPIO_PORT, PWREN_GPIO_PIN);
+
+                if(pre_pc0_follow != Bit_SET)
+                {
+                    printf("[PC0_FOLLOW] 已执行拉高：PWRSUS_EN/PWROK/PWREN\r\n");
+                }
+            }
+            else
+            {
+                GPIO_ResetBits(PWRSUS_EN_GPIO_PORT, PWRSUS_EN_GPIO_PIN);
+                GPIO_ResetBits(PWROK_GPIO_PORT, PWROK_GPIO_PIN);
+                GPIO_ResetBits(PWREN_GPIO_PORT, PWREN_GPIO_PIN);
+
+                if(pre_pc0_follow != Bit_RESET)
+                {
+                    printf("[PC0_FOLLOW] 已执行拉低：PWRSUS_EN/PWROK/PWREN\r\n");
+                }
+            }
+
+            pre_pc0_follow = slp_s3;
+        }
+
         // 各输入信号的电平变化打印（仅用于调试观察，没有其他联动逻辑）
-        report_level_change(P3V3SUS_PG_GPIO_PORT, P3V3SUS_PG_GPIO_PIN, &pre_pwrok,
-                             "[PWROK] P3V3SUS_PG变高，PB13(PWROK)/PA4(BL_EN)/PA5(PANEL_EN)/PC8(BL_PWM)拉高\r\n",
-                             "[PWROK] P3V3SUS_PG变低，PB13(PWROK)/PA4(BL_EN)/PA5(PANEL_EN)/PC8(BL_PWM)拉低\r\n");
+        report_level_change(P3V3SUS_PG_GPIO_PORT, P3V3SUS_PG_GPIO_PIN, &pre_sus_pg,
+                             "[P3V3SUS_PG] 变高，PA4(BL_EN)/PA5(PANEL_EN)/PC8(BL_PWM)拉高\r\n",
+                             "[P3V3SUS_PG] 变低，PA4(BL_EN)/PA5(PANEL_EN)/PC8(BL_PWM)拉低\r\n");
 
         report_level_change(P3V3_STBY_PG_GPIO_PORT, P3V3_STBY_PG_GPIO_PIN, &pre_stby_pg,
                              "[P3V3_STBY_PG] 变高\r\n",
@@ -211,8 +262,8 @@ void GPIO_Task(void* parameter)
                              "[CB_RESET#] 检测到核心卡复位信号变低（复位中）\r\n");
 
         report_level_change(SLP_S3_GPIO_PORT, SLP_S3_GPIO_PIN, &pre_slp_s3,
-                             "[SLP_S3#] 变高（开机）\r\n",
-                             "[SLP_S3#] 变低（关机）\r\n");
+                             "[SLP_S3#] 变高（开机，PA15(PWRSUS_EN)/PB13(PWROK)/PB3(PWREN)拉高）\r\n",
+                             "[SLP_S3#] 变低（关机，PA15(PWRSUS_EN)/PB13(PWROK)/PB3(PWREN)拉低）\r\n");
 
         report_level_change(SLP_S4_GPIO_PORT, SLP_S4_GPIO_PIN, &pre_slp_s4,
                              "[SLP_S4#] 变高（退出S4休眠）\r\n",

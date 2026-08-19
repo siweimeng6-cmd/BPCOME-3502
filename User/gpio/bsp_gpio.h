@@ -68,7 +68,7 @@
 #define SWCLK_GPIO_PORT                         GPIOA
 #define SWCLK_GPIO_PIN                          GPIO_Pin_14
 
-// PA15 - PWRSUS_EN (预留，SUS电源使能高有效) 暂不使用
+// PA15 - PWRSUS_EN SUS电源使能，高电平有效，参考PC0(SLP_S3#)高后输出高
 #define PWRSUS_EN_GPIO_PORT                     GPIOA
 #define PWRSUS_EN_GPIO_PIN                      GPIO_Pin_15
 
@@ -83,11 +83,11 @@
 
 // PB2 - BOOT1 (启动模式配置脚，硬件/BootROM使用，固件不需要初始化)
 
-// PB3 - PWREN (预留，S0域电源使能高有效) 暂不使用
+// PB3 - PWREN S0域电源使能，高电平有效，参考PC0(SLP_S3#)高后输出高
 #define PWREN_GPIO_PORT                         GPIOB
 #define PWREN_GPIO_PIN                          GPIO_Pin_3
 
-// PB4 - GD_PWRBTIN# 开关机信号输入，低有效（内部上拉）。由 GPIO_Task 轮询消抖，
+// PB4 - GD_PWRBTIN# 开关机信号输入，低有效（浮空输入）。由 GPIO_Task 轮询消抖，
 // 连续采到低电平满20ms即判定为一次有效按下，转发给PB5(PWRBTN_OUT#)
 #define GD_PWRBTIN_GPIO_PORT                    GPIOB
 #define GD_PWRBTIN_GPIO_PIN                     GPIO_Pin_4
@@ -105,11 +105,11 @@
 // PB4消抖确认后，PB5(PWRBTN_OUT#)输出的低脉冲宽度(ms)
 #define PWRBTN_PULSE_MS                         200
 
-// PB6 - P3V3SUS_PG 做输入，P3V3SUS电源PG信号（内部上拉）
+// PB6 - P3V3SUS_PG 做输入，P3V3SUS电源PG信号（浮空输入）
 #define P3V3SUS_PG_GPIO_PORT                    GPIOB
 #define P3V3SUS_PG_GPIO_PIN                     GPIO_Pin_6
 
-// PB7 - P3V3_STBY_PG 做输入，P3V3_STBY电源PG信号（内部上拉）
+// PB7 - P3V3_STBY_PG 做输入，P3V3_STBY电源PG信号（浮空输入）
 #define P3V3_STBY_PG_GPIO_PORT                  GPIOB
 #define P3V3_STBY_PG_GPIO_PIN                   GPIO_Pin_7
 
@@ -128,7 +128,7 @@
 #define P12V_EN_GPIO_PORT                       GPIOB
 #define P12V_EN_GPIO_PIN                        GPIO_Pin_12
 
-// PB13 - PWROK 底板电源OK信号输出，参考PB6(P3V3SUS_PG)高后输出高
+// PB13 - PWROK 底板电源OK信号输出，参考PC0(SLP_S3#)高后输出高
 #define PWROK_GPIO_PORT                         GPIOB
 #define PWROK_GPIO_PIN                          GPIO_Pin_13
 
@@ -141,15 +141,15 @@
 #define SW_PANEL_GPIO_PIN                       GPIO_Pin_15
 
 /******************************************PC*****************************************/
-// PC0 - SLP_S3# 核心卡开机自检信号，高电平=开机，低电平=关机（内部上拉）
+// PC0 - SLP_S3# 核心卡开机自检信号，高电平=开机，低电平=关机（浮空输入）
 #define SLP_S3_GPIO_PORT                        GPIOC
 #define SLP_S3_GPIO_PIN                         GPIO_Pin_0
 
-// PC1 - SLP_S4# 核心卡S4休眠信号输入，低有效（内部上拉）
+// PC1 - SLP_S4# 核心卡S4休眠信号输入，低有效（浮空输入）
 #define SLP_S4_GPIO_PORT                        GPIOC
 #define SLP_S4_GPIO_PIN                         GPIO_Pin_1
 
-// PC2 - SLP_S5# 核心卡S5关机信号输入，低有效（内部上拉）
+// PC2 - SLP_S5# 核心卡S5关机信号输入，低有效（浮空输入）
 #define SLP_S5_GPIO_PORT                        GPIOC
 #define SLP_S5_GPIO_PIN                         GPIO_Pin_2
 

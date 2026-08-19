@@ -26,7 +26,19 @@
 
 > 记录内容按时间倒序排列，最新的改动写在最上面。
 
+### 2026-08-18
+
+- 修复PA15/PB3/PB4无法正常当普通GPIO用的问题：STM32F10x复位后默认启用完整JTAG调试口，PA15(JTDI)/PB3(JTDO)/PB4(NJTRST)被占用，之前代码从未关闭JTAG-DP，导致这三个脚即使`GPIO_Init`配置正确，`GPIO_ReadOutputDataBit`读回的寄存器值和万用表实测的物理电平对不上（比如PWREN/PB3寄存器读到高，实测却是低）。在`bsp_gpio_init()`最开始加`GPIO_PinRemapConfig(GPIO_Remap_SWJ_JTAGDisable, ENABLE)`只保留SWD、关闭JTAG-DP，PA13(SWDIO)/PA14(SWCLK)不受影响。涉及 `User/gpio/bsp_gpio.c`。
+
 ### 2026-08-07
+
+- 需求变更：PB3(PWREN，S0域电源使能) 由"预留未使用"改为跟随 **PC0(SLP_S3#，开机自检信号)**——并入 PA15(PWRSUS_EN)/PB13(PWROK) 已有的 PC0 联动块，成为第三路，PC0高(开机)则三路同时输出高，低(关机)则同时输出低。涉及 `User/gpio/bsp_gpio.c`、`User/gpio/bsp_gpio.h`。
+
+- 需求变更：PC0(SLP_S3#)/PC1(SLP_S4#)/PC2(SLP_S5#) 和 PB4(GD_PWRBTIN#)/PB6(P3V3SUS_PG)/PB7(P3V3_STBY_PG) 共6个输入脚，全部由内部上拉（`GPIO_Mode_IPU`）改为浮空输入（`GPIO_Mode_IN_FLOATING`）。仅输入模式变化，消抖轮询、PB6/PC0联动等逻辑不变。涉及 `User/gpio/bsp_gpio.c`、`User/gpio/bsp_gpio.h`。
+
+- 需求再次变更：PB13(PWROK) 由"不操作，固定低电平"改为跟随 **PC0(SLP_S3#，开机自检信号)**——并入现有 PA15(PWRSUS_EN) 跟随 PC0 的联动块，PC0高(开机)则两路同时输出高，低(关机)则同时输出低。涉及 `User/gpio/bsp_gpio.c`、`User/gpio/bsp_gpio.h`。
+
+- 需求变更：PA15(PWRSUS_EN) 由"预留未使用"改为跟随 **PC0(SLP_S3#，开机自检信号)**——PC0高(开机)则PA15输出高，PC0低(关机)则输出低，实现方式与PA4/PA5/PC8跟随PB6一致；PB13(PWROK) 由"跟随PB6"改为"**不操作，固定输出低电平**"，彻底从联动组里移除，初始化后不再改变。涉及 `User/gpio/bsp_gpio.c`、`User/gpio/bsp_gpio.h`。
 
 - 需求变更：PB5(PWRBTN_OUT#) 转发脉冲宽度由 20ms 调整为 **200ms**（PB4 的 20ms 低电平检测门槛不变）。脉冲宽度提取为宏 `PWRBTN_PULSE_MS`，与 `GPIO_TASK_POLL_MS`/`PWRBTN_DEBOUNCE_CNT` 放在一起便于调整。涉及 `User/gpio/bsp_gpio.c`、`User/gpio/bsp_gpio.h`。
 - 按 Sheet3 需求实现 PB4(GD_PWRBTIN#,开关机按键输入) / PB5(PWRBTN_OUT#,转发给核心卡)：由"预留未使用"改为软件轮询消抖转发——`GPIO_Task` 轮询周期由100ms改为10ms，PB4连续2次采到低电平（≈20ms）即判定为一次有效按下，PB5(空闲拉高)立即输出一个20ms低脉冲，按住不放只发一次、松开后重新武装。最初用EXTI4双边沿中断+松手时算时长的方案，因触点弹跳会把"最后一段低电平"截短、导致脉冲时有时无，且必须松手才触发，已改为当前方案。涉及 `User/gpio/bsp_gpio.c`、`User/gpio/bsp_gpio.h`。

@@ -93,6 +93,13 @@ void Sensor_Task(void* parameter)
     // 打印PB4(GD_PWRBTIN#)电平状态
     printf("GD_PWRBTIN#(PB4): %d\r\n", GPIO_ReadInputDataBit(GD_PWRBTIN_GPIO_PORT, GD_PWRBTIN_GPIO_PIN));
 
+    // 打印PC0(SLP_S3#)及其联动的PB13(PWROK)/PB3(PWREN)/PA15(PWRSUS_EN)电平状态
+    printf("SLP_S3#(PC0): %d  PWROK(PB13): %d  PWREN(PB3): %d  PWRSUS_EN(PA15): %d\r\n",
+            GPIO_ReadInputDataBit(SLP_S3_GPIO_PORT, SLP_S3_GPIO_PIN),
+            GPIO_ReadOutputDataBit(PWROK_GPIO_PORT, PWROK_GPIO_PIN),
+            GPIO_ReadOutputDataBit(PWREN_GPIO_PORT, PWREN_GPIO_PIN),
+            GPIO_ReadOutputDataBit(PWRSUS_EN_GPIO_PORT, PWRSUS_EN_GPIO_PIN));
+
     // 运行时长计时+判断是否写EEPROM（每2秒调用一次，与本任务周期一致）
     Runtime_Task_Update();
 
