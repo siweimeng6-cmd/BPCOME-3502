@@ -136,14 +136,72 @@ static void report_level_change(GPIO_TypeDef *port, uint16_t pin, uint8_t *pre_s
 }
 
 /***********************************************************************
+* @ 函数名  pwrbtn_out_pulse
+* @ 功能说明  给核心卡发一次开关机脉冲：PB5(PWRBTN_OUT#)拉低PWRBTN_PULSE_MS后拉高。
+*             PB4按键转发和开机自启动都走这里，保证两种场景的脉冲宽度一致。
+* @ 参数    tag: 打印前缀，用来区分是按键转发还是开机自启动
+* @ 返回值  无
+*********************************************************************/
+static void pwrbtn_out_pulse(const char *tag)
+{
+    // printf走的是115200阻塞串口，一行中文要占5ms左右，夹在拉低和延时之间会把
+    // 低脉冲撑宽，所以先打印再拉低，保证低电平严格是PWRBTN_PULSE_MS
+    printf("%s PB5拉低，输出%dms低脉冲给核心卡\r\n", tag, PWRBTN_PULSE_MS);
+    GPIO_ResetBits(PWRBTN_OUT_GPIO_PORT, PWRBTN_OUT_GPIO_PIN);
+    vTaskDelay(pdMS_TO_TICKS(PWRBTN_PULSE_MS));
+    GPIO_SetBits(PWRBTN_OUT_GPIO_PORT, PWRBTN_OUT_GPIO_PIN);
+    printf("%s %dms后PB5拉高，脉冲结束\r\n", tag, PWRBTN_PULSE_MS);
+}
+
+/***********************************************************************
+* @ 函数名  slp_s3_follow
+* @ 功能说明  PA15(PWRSUS_EN)/PB13(PWROK)/PB3(PWREN) 跟随 PC0(SLP_S3#，开机自检信号)：
+*             PC0为高(开机)则三路都输出高，为低(关机)则都输出低。
+*             *pre_state 记录上次状态，只在变化时打印。
+* @ 返回值  无
+*********************************************************************/
+static void slp_s3_follow(uint8_t *pre_state)
+{
+    uint8_t slp_s3 = GPIO_ReadInputDataBit(SLP_S3_GPIO_PORT, SLP_S3_GPIO_PIN);
+
+    if(slp_s3 == Bit_SET)
+    {
+        GPIO_SetBits(PWRSUS_EN_GPIO_PORT, PWRSUS_EN_GPIO_PIN);
+        GPIO_SetBits(PWROK_GPIO_PORT, PWROK_GPIO_PIN);
+        GPIO_SetBits(PWREN_GPIO_PORT, PWREN_GPIO_PIN);
+
+        if(*pre_state != Bit_SET)
+        {
+            printf("[PC0_FOLLOW] 已执行拉高：PWRSUS_EN/PWROK/PWREN\r\n");
+        }
+    }
+    else
+    {
+        GPIO_ResetBits(PWRSUS_EN_GPIO_PORT, PWRSUS_EN_GPIO_PIN);
+        GPIO_ResetBits(PWROK_GPIO_PORT, PWROK_GPIO_PIN);
+        GPIO_ResetBits(PWREN_GPIO_PORT, PWREN_GPIO_PIN);
+
+        if(*pre_state != Bit_RESET)
+        {
+            printf("[PC0_FOLLOW] 已执行拉低：PWRSUS_EN/PWROK/PWREN\r\n");
+        }
+    }
+
+    *pre_state = slp_s3;
+}
+
+/***********************************************************************
 * @ 函数名  GPIO_Task
 * @ 功能说明  GPIO控制任务，轮询周期GPIO_TASK_POLL_MS：
-*             1) PA4(GN32_BL_EN)/PA5(PANEL_EN_GD)/PC8(GN32_BL_PWM) 跟随
+*             1) 任务启动后先做开机自启动：等PWRBTN_AUTO_ON_DELAY_MS后，无条件给
+*                PB5(PWRBTN_OUT#)发一次200ms低脉冲，不看PC0(SLP_S3#)传来的信号，
+*                也不用人工按开关机键；
+*             2) PA4(GN32_BL_EN)/PA5(PANEL_EN_GD)/PC8(GN32_BL_PWM) 跟随
 *                PB6(P3V3SUS_PG) 状态，PA15(PWRSUS_EN)/PB13(PWROK)/PB3(PWREN)
 *                跟随 PC0(SLP_S3#) 状态；
-*             2) 轮询消抖PB4(GD_PWRBTIN#)，连续采到低电平满20ms就给核心卡转发
+*             3) 轮询消抖PB4(GD_PWRBTIN#)，连续采到低电平满20ms就给核心卡转发
 *                一个200ms低脉冲(PB5/PWRBTN_OUT#)；
-*             3) 等待 UART4 收到"Reset"命令后，对PA0(SELF_RST) 做一次高电平100ms
+*             4) 等待 UART4 收到"Reset"命令后，对PA0(SELF_RST) 做一次高电平100ms
 *                的自复位脉冲（高电平有效）。
 * @ 参数    parameter: 任务参数
 * @ 返回值  无
@@ -159,6 +217,17 @@ void GPIO_Task(void* parameter)
     uint8_t pwrbtn_low_cnt = 0;    // PB4连续采到低电平的次数
     uint8_t pwrbtn_fired = 0;      // 本次按下是否已经转发过脉冲，松开后清零重新武装
     uint8_t pre_pc0_follow = 0xFF; // 调试用：PC0跟随块自己的边沿判断，独立于pre_slp_s3
+
+    // 自启动脉冲期间任务在延时，轮询进不去，这里先按PC0当前状态跟随一次电源使能，
+    // 免得PWRSUS_EN/PWROK/PWREN被晾在初始的低电平上。这只管电源使能，不影响下面的脉冲。
+    slp_s3_follow(&pre_pc0_follow);
+
+    // 开机自启动：BSP_Init()走完、任务调度起来之后，主动给核心卡补一次开关机脉冲，
+    // 效果等同于人按了一下开关机键，底板一上电核心卡就跟着开机。
+    // 按需求这一次是无条件发的，不看PC0(SLP_S3#)传来的信号。
+    vTaskDelay(pdMS_TO_TICKS(PWRBTN_AUTO_ON_DELAY_MS));
+    printf("[PWRBTN_AUTO] 单片机初始化完成，自动开机\r\n");
+    pwrbtn_out_pulse("[PWRBTN_AUTO]");
 
     while(1)
     {
@@ -186,11 +255,8 @@ void GPIO_Task(void* parameter)
             if(pwrbtn_low_cnt >= PWRBTN_DEBOUNCE_CNT && pwrbtn_fired == 0)
             {
                 pwrbtn_fired = 1;
-                printf("[PWRBTN] PB4低电平满20ms，PB5输出200ms低脉冲转发给核心卡\r\n");
-                GPIO_ResetBits(PWRBTN_OUT_GPIO_PORT, PWRBTN_OUT_GPIO_PIN);
-                vTaskDelay(pdMS_TO_TICKS(PWRBTN_PULSE_MS));
-                GPIO_SetBits(PWRBTN_OUT_GPIO_PORT, PWRBTN_OUT_GPIO_PIN);
-                printf("[PWRBTN] 200ms后PB5拉高，转发脉冲结束\r\n");
+                printf("[PWRBTN] PB4低电平满20ms，转发按键给核心卡\r\n");
+                pwrbtn_out_pulse("[PWRBTN]");
             }
         }
         else

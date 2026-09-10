@@ -92,7 +92,8 @@
 #define GD_PWRBTIN_GPIO_PORT                    GPIOB
 #define GD_PWRBTIN_GPIO_PIN                     GPIO_Pin_4
 
-// PB5 - PWRBTN_OUT# 做输出给核心卡，低电平有效，空闲拉高。PB4消抖确认后，输出200ms低脉冲
+// PB5 - PWRBTN_OUT# 做输出给核心卡，低电平有效，空闲拉高。PB4消抖确认后，输出200ms低脉冲；
+// 另外单片机初始化完成后会自动补发一次200ms低脉冲，实现开机自启动
 #define PWRBTN_OUT_GPIO_PORT                    GPIOB
 #define PWRBTN_OUT_GPIO_PIN                     GPIO_Pin_5
 
@@ -102,8 +103,12 @@
 // PB4连续采到低电平多少次才算一次有效按下：2 × 10ms ≈ 20ms
 #define PWRBTN_DEBOUNCE_CNT                     2
 
-// PB4消抖确认后，PB5(PWRBTN_OUT#)输出的低脉冲宽度(ms)
+// PB5(PWRBTN_OUT#)输出的低脉冲宽度(ms)，PB4按键转发和开机自启动都用这个宽度
 #define PWRBTN_PULSE_MS                         200
+
+// 开机自启动：GPIO_Task起来后，等这么多毫秒再自动补发那次低脉冲。
+// 留一点余量等核心卡待机电源稳定，免得脉冲发太早核心卡收不到；置0则任务一起来就立刻发
+#define PWRBTN_AUTO_ON_DELAY_MS                 100
 
 // PB6 - P3V3SUS_PG 做输入，P3V3SUS电源PG信号（浮空输入）
 #define P3V3SUS_PG_GPIO_PORT                    GPIOB
