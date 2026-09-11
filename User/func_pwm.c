@@ -23,7 +23,7 @@ void pwm_func(void)
     strcat((char *)stPrintf_Buf.buf, flash_buf);
     memset(flash_buf, 0, sizeof(flash_buf));
 
-    if (g_fan_tach_relay.have_period && g_fan_tach_relay.period_ticks > 0)
+    if (fan_tach_signal_is_active())
     {
         float freq = 1000000.0f / g_fan_tach_relay.period_ticks;
         float duty = (float)g_fan_tach_relay.high_ticks * 100.0f / g_fan_tach_relay.period_ticks;
@@ -31,7 +31,7 @@ void pwm_func(void)
     }
     else
     {
-        sprintf((char *)flash_buf, "FAN1_TACH(PA9->PA8):无信号\r\n");
+        sprintf((char *)flash_buf, "FAN1_TACH(PA9->PA8):频率：0.0 HZ , 占空比：0.0%%\r\n");
     }
     strcat((char *)stPrintf_Buf.buf, flash_buf);
 }
