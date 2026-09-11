@@ -26,6 +26,12 @@
 
 > 记录内容按时间倒序排列，最新的改动写在最上面。
 
+### 2026-09-10
+
+- 完善风扇转速信号停转检测：PA9（`FAN1_TACH`）为风扇转速输入，PA8（`FAN_TACH`）实时转发 PA9 电平。新增最后边沿时间记录，PA9 连续 **1 秒**未检测到边沿时判定为无输入，不再沿用停转前的频率和转速。信号恢复后重新采集完整周期再计算。
+- Debug 串口（UART4）在 PA9 无输入时输出 `FAN1_TACH(PA9->PA8):频率：0.0 HZ , 占空比：0.0%`和`风扇转速: 0 RPM`；UART5 健康报文输出 `FAN_RPM:0`。两路串口使用同一停转判断。
+- UART5 健康上报为 FreeRTOS 周期任务自动触发：`AppTaskCreate()` 创建 `UART5_Task`，任务组帧后通过 PC12（UART5_TX）发送，每 **2 秒**上报一帧；PD2 为 UART5_RX，当前不用于触发上报。涉及 `User/timer/bsp_pwm.c`、`User/timer/bsp_pwm.h`、`User/func_pwm.c`、`User/task_usart.c`。
+
 ### 2026-08-18
 
 - 修复PA15/PB3/PB4无法正常当普通GPIO用的问题：STM32F10x复位后默认启用完整JTAG调试口，PA15(JTDI)/PB3(JTDO)/PB4(NJTRST)被占用，之前代码从未关闭JTAG-DP，导致这三个脚即使`GPIO_Init`配置正确，`GPIO_ReadOutputDataBit`读回的寄存器值和万用表实测的物理电平对不上（比如PWREN/PB3寄存器读到高，实测却是低）。在`bsp_gpio_init()`最开始加`GPIO_PinRemapConfig(GPIO_Remap_SWJ_JTAGDisable, ENABLE)`只保留SWD、关闭JTAG-DP，PA13(SWDIO)/PA14(SWCLK)不受影响。涉及 `User/gpio/bsp_gpio.c`。

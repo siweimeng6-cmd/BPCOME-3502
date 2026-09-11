@@ -39,11 +39,15 @@
 #define RELAY_TIMEBASE_TIM_CLK        RCC_APB2Periph_TIM1
 #define RELAY_TIMEBASE_PRESCALER      71      // 72MHz / 72 = 1MHz，1us/tick
 
+// 超过该时间未检测到边沿，则认为输入信号已停止
+#define RELAY_SIGNAL_TIMEOUT_MS       1000
+
 // 边沿时间戳/频率占空比记录
 typedef struct {
     uint16_t last_rising_tick;
     uint16_t high_ticks;
     uint16_t period_ticks;
+    TickType_t last_edge_tick;
     uint8_t  primed;       // last_rising_tick 是否已记录过至少一次
     uint8_t  have_period;  // period_ticks 是否已经是有效值
 } RELAY_SignalTypeDef;
@@ -54,5 +58,6 @@ extern RELAY_SignalTypeDef g_fan_tach_relay;   // PA9->PA8
 void pwm_init(void);
 void tach_init(void);
 void pwm_func(void);
+uint8_t fan_tach_signal_is_active(void);
 
 #endif

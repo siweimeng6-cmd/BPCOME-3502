@@ -75,7 +75,7 @@ void Sensor_Task(void* parameter)
     pwm_func();
 
     // 4. 计算风扇转速（RPM），现代风扇通常每转产生2个脉冲
-    uint16_t fan_rpm = (uint16_t)((g_fan_tach_relay.have_period && g_fan_tach_relay.period_ticks > 0)
+    uint16_t fan_rpm = (uint16_t)(fan_tach_signal_is_active()
                                    ? ((1000000.0f / g_fan_tach_relay.period_ticks / 2) * 60)
                                    : 0);
 
@@ -149,7 +149,7 @@ void UART5_Task(void* parameter)
 
         // 3. 风扇转速，换算方式与Sensor_Task一致（每转2个脉冲）
         sprintf(flash_buf, "FAN_RPM:%d\r\n",
-                 (uint16_t)((g_fan_tach_relay.have_period && g_fan_tach_relay.period_ticks > 0)
+                 (uint16_t)(fan_tach_signal_is_active()
                              ? ((1000000.0f / g_fan_tach_relay.period_ticks / 2) * 60)
                              : 0));
         strcat(health_buf, flash_buf);

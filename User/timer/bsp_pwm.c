@@ -1,7 +1,25 @@
 #include "timer/bsp_pwm.h"
 
-RELAY_SignalTypeDef g_fan_pwm_relay  = {0, 0, 0, 0, 0};   // PC6(FAN_PWM in) -> PC7(FAN1_PWM out)
-RELAY_SignalTypeDef g_fan_tach_relay = {0, 0, 0, 0, 0};   // PA9(FAN1_TACH in) -> PA8(FAN_TACH out)
+RELAY_SignalTypeDef g_fan_pwm_relay  = {0, 0, 0, 0, 0, 0};   // PC6(FAN_PWM in) -> PC7(FAN1_PWM out)
+RELAY_SignalTypeDef g_fan_tach_relay = {0, 0, 0, 0, 0, 0};   // PA9(FAN1_TACH in) -> PA8(FAN_TACH out)
+
+static uint8_t Relay_SignalIsActive(RELAY_SignalTypeDef *sig)
+{
+    TickType_t elapsed_ticks;
+
+    if (!sig->have_period || sig->period_ticks == 0)
+    {
+        return 0;
+    }
+
+    elapsed_ticks = xTaskGetTickCount() - sig->last_edge_tick;
+    return (elapsed_ticks <= pdMS_TO_TICKS(RELAY_SIGNAL_TIMEOUT_MS)) ? 1 : 0;
+}
+
+uint8_t fan_tach_signal_is_active(void)
+{
+    return Relay_SignalIsActive(&g_fan_tach_relay);
+}
 
 /*
  * 实时把 in_port/in_pin 的电平镜像到 out_port/out_pin 上（转发），
@@ -11,6 +29,18 @@ static void Relay_ProcessEdge(RELAY_SignalTypeDef *sig, GPIO_TypeDef *in_port, u
                                GPIO_TypeDef *out_port, uint16_t out_pin)
 {
     uint16_t now = TIM_GetCounter(RELAY_TIMEBASE_TIM);
+    TickType_t edge_tick = xTaskGetTickCountFromISR();
+
+    // 停止较长时间后恢复的第一个边沿不得沿用旧周期
+    if (sig->primed &&
+        (TickType_t)(edge_tick - sig->last_edge_tick) > pdMS_TO_TICKS(RELAY_SIGNAL_TIMEOUT_MS))
+    {
+        sig->primed = 0;
+        sig->have_period = 0;
+        sig->high_ticks = 0;
+        sig->period_ticks = 0;
+    }
+    sig->last_edge_tick = edge_tick;
 
     if (GPIO_ReadInputDataBit(in_port, in_pin) == Bit_SET)
     {
