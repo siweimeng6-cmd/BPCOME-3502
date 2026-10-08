@@ -35,6 +35,9 @@ static void NVIC_Configuration(void)
     NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
     NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
     NVIC_Init(&NVIC_InitStructure);
+    // CPU串口也接收ClearRuntime，优先级必须符合FreeRTOS ISR接口要求。
+    NVIC_InitStructure.NVIC_IRQChannel = UART5_IRQn;
+    NVIC_Init(&NVIC_InitStructure);
     
 }
 /***********************************************************************

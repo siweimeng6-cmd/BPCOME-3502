@@ -44,9 +44,14 @@
 #define  HEALTH_USART_RX_GPIO_PORT       GPIOD
 #define  HEALTH_USART_RX_GPIO_PIN        GPIO_Pin_2
 
+#define SERIAL_COMMAND_DEBUG 0
+#define SERIAL_COMMAND_CPU   1
+void Serial_ProcessRuntimeCommands(void);
+void Serial_SendCommandReply(uint8_t port);
 void USART_Config(void);
 void Usart_SendByte( USART_TypeDef * pUSARTx, uint8_t ch);
-void Usart_SendString( USART_TypeDef * pUSARTx, char *str);
+/* Returns 1 only after TC confirms the entire string was transmitted. */
+uint8_t Usart_SendString( USART_TypeDef * pUSARTx, char *str);
 void Usart_SendHalfWord( USART_TypeDef * pUSARTx, uint16_t ch);
 
 // UART5健康上报口：外设初始化 + 发送占位（具体上报内容/协议未定，先只把外设跑起来）

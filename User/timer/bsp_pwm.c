@@ -2,6 +2,7 @@
 
 RELAY_SignalTypeDef g_fan_pwm_relay  = {0, 0, 0, 0, 0, 0};   // PC6(FAN_PWM in) -> PC7(FAN1_PWM out)
 RELAY_SignalTypeDef g_fan_tach_relay = {0, 0, 0, 0, 0, 0};   // PA9(FAN1_TACH in) -> PA8(FAN_TACH out)
+volatile TickType_t g_relay_tick_snapshot = 0;
 
 static uint8_t Relay_SignalIsActive(RELAY_SignalTypeDef *sig)
 {
@@ -29,7 +30,10 @@ static void Relay_ProcessEdge(RELAY_SignalTypeDef *sig, GPIO_TypeDef *in_port, u
                                GPIO_TypeDef *out_port, uint16_t out_pin)
 {
     uint16_t now = TIM_GetCounter(RELAY_TIMEBASE_TIM);
-    TickType_t edge_tick = xTaskGetTickCountFromISR();
+    /* EXTI优先级1高于RTOS允许的5，不能调用任何FreeRTOS API。
+     * SysTick发布32位原子快照；极端抢占窗口内至多滞后一个tick。
+     */
+    TickType_t edge_tick = g_relay_tick_snapshot;
 
     // 停止较长时间后恢复的第一个边沿不得沿用旧周期
     if (sig->primed &&

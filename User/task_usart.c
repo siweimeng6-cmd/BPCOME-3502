@@ -58,8 +58,12 @@ uint8_t iic_switch=0;
 */
 void Sensor_Task(void* parameter)
 {
+    uint32_t runtime_minutes, runtime_countdown;
+    uint8_t runtime_valid;
 	while (1)
   {
+    Serial_ProcessRuntimeCommands();
+    Serial_SendCommandReply(SERIAL_COMMAND_DEBUG);
     // 清空打印缓冲区
     memset(stPrintf_Buf.buf, 0, sizeof(stPrintf_Buf.buf));
     
@@ -81,7 +85,7 @@ void Sensor_Task(void* parameter)
 
     // 5. 打印所有值
     printf("\r\n=================== 系统状态 ===================\r\n");
-    printf("固件版本: V1.0  编译时间: %s %s\r\n", __DATE__, __TIME__);
+    printf("固件版本: 260929-V2  编译时间: %s %s\r\n", __DATE__, __TIME__);
     printf("%s", stPrintf_Buf.buf);
 
     // 打印风扇转速
@@ -100,12 +104,16 @@ void Sensor_Task(void* parameter)
             GPIO_ReadOutputDataBit(PWREN_GPIO_PORT, PWREN_GPIO_PIN),
             GPIO_ReadOutputDataBit(PWRSUS_EN_GPIO_PORT, PWRSUS_EN_GPIO_PIN));
 
-    // 运行时长计时+判断是否写EEPROM（每2秒调用一次，与本任务周期一致）
+    // 按两次调用之间实际经过的tick计时，采集、打印和调度耗时均计入
     Runtime_Task_Update();
 
     // 打印累计运行时间及距下次EEPROM保存的倒计时
-    printf("累计运行时间: %u小时%u分钟（距下次写入EEPROM还剩 %u 分钟）\r\n",
-            g_runtime_total_minutes / 60, g_runtime_total_minutes % 60, g_runtime_countdown_minutes);
+    Runtime_GetSnapshot(&runtime_minutes, &runtime_countdown, &runtime_valid);
+    if (runtime_valid)
+        printf("累计运行时间: %u小时%u分钟（距下次写入EEPROM还剩 %u 分钟）\r\n",
+                runtime_minutes / 60, runtime_minutes % 60, runtime_countdown);
+    else
+        printf("累计运行时间: 未知（历史读取失败或损坏，暂停写入EEPROM）\r\n");
 
     printf("================================================\r\n");
 
@@ -127,9 +135,12 @@ void Sensor_Task(void* parameter)
 void UART5_Task(void* parameter)
 {
     char flash_buf[128] = {0};
+    uint32_t runtime_minutes, runtime_countdown;
+    uint8_t runtime_valid;
 
     while (1)
     {
+        Serial_SendCommandReply(SERIAL_COMMAND_CPU);
         // 清空报文缓冲区
         memset(health_buf, 0, sizeof(health_buf));
 
@@ -175,8 +186,12 @@ void UART5_Task(void* parameter)
         strcat(health_buf, flash_buf);
 
         // 6. 累计运行时间及距下次EEPROM保存的倒计时
-        sprintf(flash_buf, "RUNTIME:%uh%um NEXT_SAVE_IN:%u\r\n",
-                 g_runtime_total_minutes / 60, g_runtime_total_minutes % 60, g_runtime_countdown_minutes);
+        Runtime_GetSnapshot(&runtime_minutes, &runtime_countdown, &runtime_valid);
+        if (runtime_valid)
+            sprintf(flash_buf, "RUNTIME:%uh%um NEXT_SAVE_IN:%u\r\n",
+                     runtime_minutes / 60, runtime_minutes % 60, runtime_countdown);
+        else
+            sprintf(flash_buf, "RUNTIME:N/A NEXT_SAVE_IN:0\r\n");
         strcat(health_buf, flash_buf);
 
         sprintf(flash_buf, "=====================================\r\n");

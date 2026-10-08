@@ -1,4 +1,7 @@
 #include "bsp_mo_i2c.h"
+#include "FreeRTOS.h"
+#include "task.h"
+#include <string.h>
 
 /*
 *********************************************************************************************************
@@ -268,70 +271,303 @@ uint8_t eeprom_test(void)
 
 uint32_t g_runtime_total_minutes = 0;
 uint32_t g_runtime_countdown_minutes = RUNTIME_SAVE_INTERVAL_MIN;
+uint8_t g_runtime_history_valid = 0;
 
-static uint32_t s_base_minutes = 0;        // 开机时从EEPROM读到的历史累计分钟数
-static uint32_t s_elapsed_seconds = 0;     // 本次开机已运行秒数(Sensor_Task每次+2)
-static uint32_t s_last_saved_minutes = 0;  // 本次开机上一次写EEPROM时的已运行分钟数
+/* V1磁盘格式：5个小端uint32_t，CRC覆盖前4个字，两个槽各占独立页。
+ * 旧地址128只读，不会因迁移或新格式写入中断而被覆盖。
+ */
+#define RUNTIME_RECORD_MAGIC       0x52544D31UL
+#define RUNTIME_RECORD_WORDS       5
+#define RUNTIME_SAVE_SECONDS       (RUNTIME_SAVE_INTERVAL_MIN * 60UL)
+#define RUNTIME_READY_POLLS        1000
+#define RUNTIME_NO_SLOT            2
 
-/*
-*********************************************************************************************************
-*	函 数 名: Runtime_Init
-*	功能说明: 开机时调用一次，从EEPROM读取历史累计运行时间(分钟)，作为本次计时的起点
-*	形    参：无
-*	返 回 值: 无
-*********************************************************************************************************
-*/
-void Runtime_Init(void)
+static TickType_t s_runtime_last_tick;
+static uint32_t s_runtime_fraction_ticks;
+static uint64_t s_runtime_session_seconds;
+static uint64_t s_runtime_base_seconds;
+static uint64_t s_runtime_saved_seconds;
+static uint64_t s_runtime_save_deadline;
+static uint64_t s_runtime_next_attempt;
+static uint32_t s_runtime_sequence;
+static uint8_t s_runtime_active_slot;
+static uint8_t s_runtime_valid_mask;
+static uint8_t s_runtime_history_ready;
+static uint8_t s_runtime_clear_failed;
+
+static uint16_t Runtime_SlotAddress(uint8_t slot)
 {
-	uint32_t stored = 0;
-
-	if (ee_CheckOk() && ee_ReadBytes((uint8_t *)&stored, RUNTIME_EE_ADDR, sizeof(stored)))
-	{
-		if (stored == 0xFFFFFFFF)   /* EEPROM擦除态，视为第一次开机 */
-		{
-			stored = 0;
-		}
-	}
-	else
-	{
-		stored = 0;
-		printf("[RUNTIME] 读取EEPROM累计运行时间失败，按0开始计时\r\n");
-	}
-
-	s_base_minutes = stored;
-	g_runtime_total_minutes = stored;
-	g_runtime_countdown_minutes = RUNTIME_SAVE_INTERVAL_MIN;
-
-	printf("[RUNTIME] 单片机累计运行时间: %u小时%u分钟\r\n", g_runtime_total_minutes / 60, g_runtime_total_minutes % 60);
+    return slot == 0 ? RUNTIME_EE_SLOT_A_ADDR : RUNTIME_EE_SLOT_B_ADDR;
 }
 
-/*
-*********************************************************************************************************
-*	函 数 名: Runtime_Task_Update
-*	功能说明: 周期性调用(与调用者的轮询周期一致，当前为Sensor_Task每2秒调用一次)，
-*	         累加本次开机运行时长；每满RUNTIME_SAVE_INTERVAL_MIN分钟，把累计总时长写入EEPROM一次
-*	形    参：无
-*	返 回 值: 无
-*********************************************************************************************************
-*/
+/* CRC-32/ISO-HDLC，固定按小端字节顺序计算，不依赖结构体填充。 */
+static uint32_t Runtime_RecordCRC(const uint32_t *record)
+{
+    uint32_t crc = 0xFFFFFFFFUL;
+    uint32_t word;
+    uint8_t i, byte, bit;
+
+    for (i = 0; i < RUNTIME_RECORD_WORDS - 1; ++i)
+    {
+        word = record[i];
+        for (byte = 0; byte < 4; ++byte)
+        {
+            crc ^= word & 0xFF;
+            word >>= 8;
+            for (bit = 0; bit < 8; ++bit)
+                crc = (crc >> 1) ^ ((crc & 1) ? 0xEDB88320UL : 0);
+        }
+    }
+    return crc ^ 0xFFFFFFFFUL;
+}
+
+static uint8_t Runtime_RecordValid(const uint32_t *record)
+{
+    return record[0] == RUNTIME_RECORD_MAGIC && record[3] < 60 &&
+           record[4] == Runtime_RecordCRC(record);
+}
+
+static uint8_t Runtime_RecordBlank(const uint32_t *record)
+{
+    uint8_t i;
+    for (i = 0; i < RUNTIME_RECORD_WORDS; ++i)
+        if (record[i] != 0xFFFFFFFFUL)
+            return 0;
+    return 1;
+}
+
+/* 任一槽通信失败都不继续写：无法确定未读出的槽是否保存着更新的历史。 */
+static uint8_t Runtime_LoadHistory(void)
+{
+    uint32_t records[2][RUNTIME_RECORD_WORDS];
+    uint32_t legacy_minutes;
+    uint32_t difference;
+    uint8_t valid_a, valid_b, active;
+
+    if (!ee_CheckOk() ||
+        !ee_ReadBytes((uint8_t *)records[0], RUNTIME_EE_SLOT_A_ADDR, sizeof(records[0])) ||
+        !ee_ReadBytes((uint8_t *)records[1], RUNTIME_EE_SLOT_B_ADDR, sizeof(records[1])))
+        return 0;
+
+    valid_a = Runtime_RecordValid(records[0]);
+    valid_b = Runtime_RecordValid(records[1]);
+    if (valid_a || valid_b)
+    {
+        active = valid_a ? 0 : 1;
+        if (valid_a && valid_b)
+        {
+            difference = records[1][1] - records[0][1];
+            /* 正常双槽序号相邻；相同序号却内容不同或半范围歧义时保护现场。 */
+            if (difference == 0x80000000UL ||
+                (difference == 0 && memcmp(records[0], records[1], sizeof(records[0])) != 0))
+                return 0;
+            if (difference != 0 && difference < 0x80000000UL)
+                active = 1;
+        }
+        s_runtime_base_seconds = (uint64_t)records[active][2] * 60 + records[active][3];
+        s_runtime_sequence = records[active][1];
+        s_runtime_active_slot = active;
+        s_runtime_valid_mask = (uint8_t)(valid_a | (valid_b << 1));
+    }
+    else
+    {
+        /* 有非空但损坏的新记录时，禁止回退到过时的旧版值并覆盖历史。 */
+        if (!Runtime_RecordBlank(records[0]) || !Runtime_RecordBlank(records[1]) ||
+            !ee_ReadBytes((uint8_t *)&legacy_minutes, RUNTIME_EE_ADDR, sizeof(legacy_minutes)))
+            return 0;
+        if (legacy_minutes == 0xFFFFFFFFUL)
+            legacy_minutes = 0;
+        s_runtime_base_seconds = (uint64_t)legacy_minutes * 60;
+        s_runtime_sequence = 0;
+        s_runtime_active_slot = RUNTIME_NO_SLOT;
+        s_runtime_valid_mask = 0;
+    }
+    /* 保存目标对齐累计时长的整30分钟；不随上次保存的轮询延迟后移。 */
+    s_runtime_save_deadline = (s_runtime_base_seconds / RUNTIME_SAVE_SECONDS + 1) * RUNTIME_SAVE_SECONDS;
+    s_runtime_history_ready = 1;
+    return 1;
+}
+
+static void Runtime_Publish(void)
+{
+    uint64_t total_seconds = s_runtime_base_seconds + s_runtime_session_seconds;
+    uint64_t minutes = total_seconds / 60;
+    uint32_t total_minutes = 0;
+    uint32_t countdown_minutes = 0;
+
+    if (s_runtime_history_ready)
+    {
+        total_minutes = minutes > 0xFFFFFFFFUL ? 0xFFFFFFFFUL : (uint32_t)minutes;
+        if (total_seconds < s_runtime_save_deadline && s_runtime_valid_mask == 3)
+            countdown_minutes = (uint32_t)((s_runtime_save_deadline - total_seconds + 59) / 60);
+    }
+    /* UART5可能抢占Sensor_Task；三项作为一个快照发布，临界区内不做I2C/打印。 */
+    taskENTER_CRITICAL();
+    g_runtime_total_minutes = total_minutes;
+    g_runtime_countdown_minutes = countdown_minutes;
+    g_runtime_history_valid = s_runtime_history_ready;
+    taskEXIT_CRITICAL();
+}
+
+void Runtime_GetSnapshot(uint32_t *minutes, uint32_t *countdown, uint8_t *valid)
+{
+    taskENTER_CRITICAL();
+    *minutes = g_runtime_total_minutes;
+    *countdown = g_runtime_countdown_minutes;
+    *valid = g_runtime_history_valid;
+    taskEXIT_CRITICAL();
+}
+
+/* 最多一页，写入后等待内部写周期完成并逐字节回读确认。 */
+static uint8_t Runtime_WriteVerified(uint16_t address, uint8_t *data, uint16_t size)
+{
+    uint8_t verify[EE_PAGE_SIZE];
+    uint16_t poll;
+
+    if (size > sizeof(verify) || !ee_WriteBytes(data, address, size))
+        return 0;
+    for (poll = 0; poll < RUNTIME_READY_POLLS; ++poll)
+        if (ee_CheckOk())
+            break;
+    return poll < RUNTIME_READY_POLLS &&
+           ee_ReadBytes(verify, address, size) && memcmp(data, verify, size) == 0;
+}
+
+/* 写非当前槽，等待内部写周期结束，再回读比对。全程保留上一份有效记录。 */
+static uint8_t Runtime_Save(void)
+{
+    uint32_t record[RUNTIME_RECORD_WORDS];
+    uint64_t total_seconds = s_runtime_base_seconds + s_runtime_session_seconds;
+    uint8_t target = s_runtime_active_slot == 0 ? 1 : 0;
+
+    if (total_seconds / 60 > 0xFFFFFFFFUL)
+        return 0; /* 超过对外分钟数表示范围时不回绕覆盖历史。 */
+    record[0] = RUNTIME_RECORD_MAGIC;
+    record[1] = s_runtime_sequence + 1;
+    record[2] = (uint32_t)(total_seconds / 60);
+    record[3] = (uint32_t)(total_seconds % 60);
+    record[4] = Runtime_RecordCRC(record);
+    if (!Runtime_WriteVerified(Runtime_SlotAddress(target), (uint8_t *)record, sizeof(record)))
+        return 0;
+
+    s_runtime_sequence = record[1];
+    s_runtime_active_slot = target;
+    s_runtime_valid_mask |= (uint8_t)(1U << target);
+    s_runtime_saved_seconds = s_runtime_session_seconds;
+    s_runtime_save_deadline = (total_seconds / RUNTIME_SAVE_SECONDS + 1) * RUNTIME_SAVE_SECONDS;
+    printf("[RUNTIME] 累计运行时间 %u小时%u分钟 已写入EEPROM并回读确认（备份%c）\r\n",
+           record[2] / 60, record[2] % 60, target == 0 ? 'A' : 'B');
+    return 1;
+}
+
+/* BSP阶段调用一次。系统启动调度前tick为0；不计上电初始化/断电期间时间。 */
+void Runtime_Init(void)
+{
+    s_runtime_last_tick = xTaskGetTickCount();
+    s_runtime_fraction_ticks = 0;
+    s_runtime_session_seconds = 0;
+    s_runtime_base_seconds = 0;
+    s_runtime_saved_seconds = 0;
+    s_runtime_save_deadline = 0;
+    s_runtime_next_attempt = 0;
+    s_runtime_sequence = 0;
+    s_runtime_active_slot = RUNTIME_NO_SLOT;
+    s_runtime_valid_mask = 0;
+    s_runtime_history_ready = 0;
+    s_runtime_clear_failed = 0;
+    g_runtime_history_valid = 0;
+
+    if (!Runtime_LoadHistory())
+    {
+        s_runtime_next_attempt = RUNTIME_RETRY_SECONDS;
+        printf("[RUNTIME] 历史记录读取失败或损坏，暂停写入并重试\r\n");
+    }
+    Runtime_Publish();
+    if (g_runtime_history_valid)
+        printf("[RUNTIME] 单片机累计运行时间: %u小时%u分钟\r\n",
+               g_runtime_total_minutes / 60, g_runtime_total_minutes % 60);
+}
+
+/* 只允许Sensor_Task调用，与温度采集/自动保存串行。中断保持开启。
+ * 擦除成功后重建零时长双备份；任一步失败均返回0并暂停自动保存，
+ * 防止把旧RAM历史重新写入已部分擦除的EEPROM，需重新发送ClearRuntime。
+ */
+uint8_t Runtime_ClearAll(void)
+{
+    uint8_t erased_page[EE_PAGE_SIZE];
+    uint32_t address; /* 64KB终点不能用uint16_t，避免回绕后无限擦除。 */
+
+    s_runtime_clear_failed = 1;
+    s_runtime_history_ready = 0;
+    Runtime_Publish();
+    memset(erased_page, 0xFF, sizeof(erased_page));
+    for (address = 0; address < EE_SIZE; address += EE_PAGE_SIZE)
+        if (!Runtime_WriteVerified((uint16_t)address, erased_page, sizeof(erased_page)))
+            return 0;
+
+    s_runtime_last_tick = xTaskGetTickCount();
+    s_runtime_fraction_ticks = 0;
+    s_runtime_session_seconds = 0;
+    s_runtime_base_seconds = 0;
+    s_runtime_saved_seconds = 0;
+    s_runtime_save_deadline = RUNTIME_SAVE_SECONDS;
+    s_runtime_next_attempt = 0;
+    s_runtime_sequence = 0;
+    s_runtime_active_slot = RUNTIME_NO_SLOT;
+    s_runtime_valid_mask = 0;
+    s_runtime_history_ready = 1;
+    if (!Runtime_Save() || !Runtime_Save())
+    {
+        s_runtime_history_ready = 0;
+        Runtime_Publish();
+        return 0;
+    }
+    /* 以清除完成时刻作为新计时起点，擦除及建立备份耗时不带入新计时。 */
+    s_runtime_last_tick = xTaskGetTickCount();
+    s_runtime_clear_failed = 0;
+    Runtime_Publish();
+    return 1;
+}
+
+/* 只由Sensor_Task调用，保持与温度采集的模拟I2C串行访问。
+ * 两次调用间隔必须小于一个tick回绕周期（当前1kHz/32位约49.7天）。
+ */
 void Runtime_Task_Update(void)
 {
-	uint32_t elapsed_minutes;
+    TickType_t now = xTaskGetTickCount();
+    TickType_t delta = (TickType_t)(now - s_runtime_last_tick);
+    uint64_t ticks = (uint64_t)delta + s_runtime_fraction_ticks;
 
-	s_elapsed_seconds += 2;
-	elapsed_minutes = s_elapsed_seconds / 60;
+    s_runtime_last_tick = now;
+    s_runtime_session_seconds += ticks / configTICK_RATE_HZ;
+    s_runtime_fraction_ticks = (uint32_t)(ticks % configTICK_RATE_HZ);
 
-	g_runtime_total_minutes = s_base_minutes + elapsed_minutes;
+    if (s_runtime_clear_failed)
+    {
+        Runtime_Publish();
+        return;
+    }
 
-	if (elapsed_minutes - s_last_saved_minutes >= RUNTIME_SAVE_INTERVAL_MIN)
-	{
-		s_last_saved_minutes = elapsed_minutes;
-
-		if (ee_WriteBytes((uint8_t *)&g_runtime_total_minutes, RUNTIME_EE_ADDR, sizeof(g_runtime_total_minutes)))
-			printf("[RUNTIME] 累计运行时间 %u小时%u分钟 已写入EEPROM\r\n", g_runtime_total_minutes / 60, g_runtime_total_minutes % 60);
-		else
-			printf("[RUNTIME] 写入EEPROM失败\r\n");
-	}
-
-	g_runtime_countdown_minutes = RUNTIME_SAVE_INTERVAL_MIN - (elapsed_minutes - s_last_saved_minutes);
+    if (s_runtime_session_seconds >= s_runtime_next_attempt)
+    {
+        if (!s_runtime_history_ready && !Runtime_LoadHistory())
+        {
+            s_runtime_next_attempt = s_runtime_session_seconds + RUNTIME_RETRY_SECONDS;
+        }
+        else if (s_runtime_valid_mask != 3 ||
+                 s_runtime_base_seconds + s_runtime_session_seconds >= s_runtime_save_deadline)
+        {
+            if (Runtime_Save())
+            {
+                /* 首次迁移/单槽恢复时尽快补齐另一份备份。 */
+                s_runtime_next_attempt = s_runtime_session_seconds;
+            }
+            else
+            {
+                s_runtime_next_attempt = s_runtime_session_seconds + RUNTIME_RETRY_SECONDS;
+                printf("[RUNTIME] EEPROM保存未通过确认，保留旧记录，稍后重试\r\n");
+            }
+        }
+    }
+    Runtime_Publish();
 }

@@ -140,7 +140,7 @@ PC6=25kHz PWM + PA9较高频率转速信号同时注入，让 EXTI9_5 打满负�
 
 由 `UART5_Task`（`task_usart.c`，优先级2、栈512字）每 **2 秒** 发送一帧多行文本报文，
 经 `UART5_SendHealthReport()` → `Usart_SendString(HEALTH_USARTx, str)` 阻塞式发出。
-**只发不收**：UART5 未使能 RXNE 中断、未配 NVIC，核心卡下发的命令收不到。
+UART5自 `260929-V1` 起使能RXNE接收及优先级5的中断，支持 `ClearRuntime`，详见[双串口清零指令](./双串口清零指令.md)。正常健康上报仍由UART5_Task发送。
 
 报文格式（标签统一用ASCII，避免跨设备编码问题）：
 
@@ -184,11 +184,12 @@ CB_RESET#:1 SLP_S3#:1 SLP_S4#:1 SLP_S5#:1
 **回归**：观察 `Sensor_Task`（`task_usart.c`）的整体打印格式（版本号/编译时间、
 `V_12V`/`V_5V`/`V_3.3V`/`I_CURRENT`、三路温度、风扇RPM等）是否和改动前一致。
 
-**串口指令**：项目目前通过串口接收解析的指令只有一条硬编码指令，没有命令表框架：
+**串口指令**：按行解析，回车或换行结束：
 
 | 指令 | 端口 | 格式 | 触发动作 | 源码位置 |
 |---|---|---|---|---|
 | `Reset` | UART4，115200-8N1 | 单行文本，以`\r`或`\n`结尾，区分大小写，无参数 | 对PA0(SELF_RST)产生一次约100ms**高电平**脉冲触发自复位，空闲态为低 | 匹配逻辑：`bsp_usart.c` `DEBUG_USART_IRQHandler`；执行动作：`bsp_gpio.c` `GPIO_Task` |
+| `ClearRuntime` | UART4或UART5，115200-8N1 | 单行文本，CR/LF结束，区分大小写，无参数 | 擦除整片64KB EEPROM，建立零时长双备份并清零当前计时；来源口返回OK或ERROR | `bsp_usart.c` 接收/回执；Sensor_Task调用 `Runtime_ClearAll` 执行 |
 
 **验证步骤**：串口调试助手连 UART4（115200-8N1），发送 `Reset\r\n`，应看到打印
 "[SELF_RST] 收到Reset命令，PA0拉高"，约100ms后打印"PA0拉低，自复位脉冲结束"；

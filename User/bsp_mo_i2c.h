@@ -66,14 +66,20 @@
 #define EE_ADDR_BYTES		2			          /* 地址字节个数 */
 
 /*********************运行时长统计（与EEPROM共用，见bsp_eeprom.c）**********************/
-#define RUNTIME_EE_ADDR            128     /* 避开eeprom_test()自检占用的0~127地址(第2页页首) */
+#define RUNTIME_EE_ADDR            128     /* 旧版累计分钟数，升级时只读迁移 */
+#define RUNTIME_EE_SLOT_A_ADDR     256     /* 双备份放在独立的128字节页 */
+#define RUNTIME_EE_SLOT_B_ADDR     384
 #define RUNTIME_SAVE_INTERVAL_MIN  30      /* 每满30分钟写一次EEPROM */
+#define RUNTIME_RETRY_SECONDS      5       /* 读/写失败后重试间隔 */
 
 extern uint32_t g_runtime_total_minutes;      // 单片机累计运行时间(分钟) = EEPROM历史值 + 本次开机已运行
 extern uint32_t g_runtime_countdown_minutes;  // 距下一次EEPROM保存还剩多少分钟
+extern uint8_t g_runtime_history_valid;      // 0:历史未知，禁止把total_minutes作为有效累计值
 
 void Runtime_Init(void);        // 开机时调用一次：从EEPROM读历史累计值
-void Runtime_Task_Update(void); // 周期调用(Sensor_Task每2秒调一次)：计时、判断是否写EEPROM
+void Runtime_Task_Update(void); // Sensor_Task调用：按实际tick累计并保存；调用间隔须小于tick回绕周期
+void Runtime_GetSnapshot(uint32_t *minutes, uint32_t *countdown, uint8_t *valid); // 任务上下文读取一致快照
+uint8_t Runtime_ClearAll(void); // Sensor_Task执行：整片擦除并建立零时长双备份，1成功/0失败
 
 #define BPD20550_ADDRESS									0x80
 #define BPD20550_OPERATION								0x01

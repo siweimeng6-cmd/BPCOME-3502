@@ -54,6 +54,7 @@ typedef struct {
 
 extern RELAY_SignalTypeDef g_fan_pwm_relay;    // PC6->PC7
 extern RELAY_SignalTypeDef g_fan_tach_relay;   // PA9->PA8
+extern volatile TickType_t g_relay_tick_snapshot; // SysTick写入，高优先级EXTI只读
 
 void pwm_init(void);
 void tach_init(void);

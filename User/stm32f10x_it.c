@@ -27,7 +27,8 @@
 #include "stm32f10x_it.h"
 
 #include "FreeRTOS.h"					//FreeRTOS π”√		  
-#include "task.h" 
+#include "task.h"
+#include "timer/bsp_pwm.h"
 
 /** @addtogroup STM32F10x_StdPeriph_Template
   * @{
@@ -146,6 +147,8 @@ void SysTick_Handler(void)
       {
     #endif  /* INCLUDE_xTaskGetSchedulerState */  
         xPortSysTickHandler();
+        /* Publish after the kernel tick; high-priority EXTI must not call RTOS. */
+        g_relay_tick_snapshot = xTaskGetTickCountFromISR();
     #if (INCLUDE_xTaskGetSchedulerState  == 1 )
       }
     #endif  /* INCLUDE_xTaskGetSchedulerState */
